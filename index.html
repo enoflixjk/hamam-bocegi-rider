@@ -170,6 +170,10 @@
   #speedo { position: absolute; right: 12px; top: calc(var(--safe-top) + 62px); text-align: right; pointer-events: none; line-height: 1; }
   #speedo .lb { display: inline-block; font: 800 12px var(--f-ui); color: #1b1840; background: #fff; border: 3px solid var(--ink); border-radius: 8px; padding: 1px 8px; box-shadow: 0 3px 0 var(--ink); }
   #speedo .v { display: block; margin: 3px 0 8px; font: 800 26px var(--f-disp); color: #ffd23f; -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; }
+  #speedo.turbo .v { color: #3dff8a; animation: turboPulse .35s ease-in-out infinite alternate; }
+  #speedo.slow .v { color: #ff5a5a; }
+  @keyframes turboPulse { to { transform: scale(1.12); } }
+  #speedo .v { transform-origin: right center; }
   #speedo .v small { font-size: 13px; color: #fff; -webkit-text-stroke: 4px var(--ink); }
   .ctl { position: absolute; left: 0; right: 0; bottom: calc(14px + env(safe-area-inset-bottom)); pointer-events: none; }
   .ctl-btn { pointer-events: auto; position: absolute; bottom: 0; width: 86px; height: 86px; border-radius: 26px; font-size: 38px; display: grid; place-items: center; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -2916,7 +2920,7 @@ class Track {
     this.pools = new Map(); this.obstacles = []; this.crumbs = []; this.crumbPools = {}; this.crumbKind = 'kirinti';
     this.pickups = []; this.puPool = {}; this.untilPU = rand(160, 260); this.skyUntil = 0; this.skyLane = 1; this.skyCount = 0;
     this.dodged = 0; this.allowPU = true;
-    this.gases = []; this.foods = []; this.suspend = 0; this.untilFood = rand(90, 160);
+    this.gases = []; this.foods = []; this.pads = []; this.untilPad = 80; this.suspend = 0; this.untilFood = rand(90, 160);
     this.box = new THREE.Box3(); this.biome = BIOMES[0];
   }
   makePickup(kind) { // parlak para gibi dönen disk + emoji
@@ -3045,6 +3049,7 @@ class Track {
     for (const p of this.pickups) this.releasePU(p); this.pickups.length = 0;
     for (const g of this.gases) this.group.remove(g.obj); this.gases.length = 0;
     for (const f of this.foods) this.group.remove(f.obj); this.foods.length = 0;
+    for (const p of this.pads) { this.group.remove(p.obj); this.padPool[p.kind].push(p.obj); } this.pads.length = 0; this.untilPad = rand(60, 110);
     this.dodged = 0; this.untilPU = rand(160, 260); this.suspend = 0; this.untilFood = rand(90, 160);
   }
   resetPools() { this.clear(); this.pools.clear(); this.crumbPools = {}; }
@@ -3072,6 +3077,12 @@ class Track {
     row.forEach((code, lane) => {
       if (!code) { free.push(lane); return; }
       const role = ROLE[code];
+      if (MODE.rider && role === 'jump') { // 🏍️ trafik modunda zıplanacak engel yok: 🥒 salatalık (direksiyonla kaçılır), araç ya da boş yol
+        const r = Math.random();
+        if (r < 0.22) { this.spawnSolid('salatalik', lane, z); return; }
+        if (r < 0.55 && !b.water) { this.spawnCar(lane, z); return; }
+        free.push(lane); return;
+      }
       if (MODE.rider && !b.water && (role === 'slide' || (role === 'block' && Math.random() < (b.city ? 0.85 : 0.6)))) { this.spawnCar(lane, z); return; } // 🚕 trafik
       const key = pick(b[role]);
       const obj = this.obtain(key), bd = this.assets.bounds(key);
@@ -3081,6 +3092,10 @@ class Track {
       this.obstacles.push({ obj, key, role, lane, hw, hd, y0, y1, hit: false });
     });
     if (b.bonus) { for (const lane of free) this.crumbLine(lane, z + 3, 5, 0.55); return; } // kanalizasyon: bol kırıntı
+    if (MODE.rider && free.length && this.untilPad <= 0 && runTime > 3) { // 🟩 turbo / 🟥 yavaşlatıcı şerit
+      const lane = pick(free), kind = Math.random() < 0.6 ? 'boost' : 'slow';
+      this.spawnPad(kind, lane, z + 3); free.splice(free.indexOf(lane), 1); this.untilPad = rand(70, 140);
+    }
     if (free.length && b.food && this.untilFood <= 0) { const lane = pick(free); this.spawnFood(b.food, lane, z + 2); free.splice(free.indexOf(lane), 1); this.untilFood = rand(120, 200); }
     if (free.length && this.allowPU && this.untilPU <= 0 && runTime > 4) { // güçlendirici
       const lane = pick(free), kind = pick(Object.keys(POWERUPS));
@@ -3097,8 +3112,47 @@ class Track {
       }
     }
   }
+  spawnSolid(key, lane, z) { // direksiyonla etrafından dolaşılan (zıplanmayan) engel
+    const obj = this.obtain(key), bd = this.assets.bounds(key);
+    obj.position.set(CONFIG.lanes[lane] + rand(-0.5, 0.5), 0, z);
+    const hw = Math.min((bd.max.x - bd.min.x) / 2, 0.85), hd = Math.max((bd.max.z - bd.min.z) / 2, 0.3);
+    this.obstacles.push({ obj, key, role: 'block', lane, hw, hd, y0: 0, y1: 4, hit: false });
+  }
+  padTex(kind) { // ileri akan ok desenli parlak şerit
+    this.padTexs ||= {};
+    if (this.padTexs[kind]) return this.padTexs[kind];
+    const c = document.createElement('canvas'); c.width = 128; c.height = 256; const g = c.getContext('2d');
+    const boost = kind === 'boost', base = boost ? '#2bff7e' : '#ff3434', dark = boost ? '#0b9a48' : '#a51212';
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, 128, 256);
+    g.fillStyle = base; g.fillRect(8, 0, 112, 256);
+    g.fillStyle = dark; g.globalAlpha = 0.35; g.fillRect(8, 0, 22, 256); g.fillRect(98, 0, 22, 256); g.globalAlpha = 1;
+    g.strokeStyle = '#ffffff'; g.lineWidth = 22; g.lineJoin = 'round'; g.lineCap = 'round';
+    for (let i = 0; i < 2; i++) { const y = 40 + i * 128; g.beginPath(); if (boost) { g.moveTo(22, y + 56); g.lineTo(64, y + 10); g.lineTo(106, y + 56); } else { g.moveTo(22, y + 10); g.lineTo(64, y + 56); g.lineTo(106, y + 10); } g.stroke(); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3);
+    return (this.padTexs[kind] = t);
+  }
+  spawnPad(kind, lane, z) {
+    this.padPool ||= { boost: [], slow: [] };
+    let obj = this.padPool[kind].pop();
+    if (!obj) {
+      obj = new THREE.Group();
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 8), new THREE.MeshBasicMaterial({ map: this.padTex(kind), transparent: true, opacity: 0.95, toneMapped: false, depthWrite: false }));
+      m.rotation.x = -Math.PI / 2; m.position.y = 0.04; m.renderOrder = 2; obj.add(m);
+      const glow = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 8.8), new THREE.MeshBasicMaterial({ color: kind === 'boost' ? 0x3dff8a : 0xff4040, transparent: true, opacity: 0.45, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+      glow.rotation.x = -Math.PI / 2; glow.position.y = 0.03; obj.add(glow);
+    }
+    obj.position.set(CONFIG.lanes[lane], 0, z); obj.visible = true; this.group.add(obj);
+    this.pads.push({ obj, kind, lane, hit: false });
+  }
+  padHit(player) { // 🟩/🟥 şeritten geçiyor mu
+    for (const p of this.pads) { const q = p.obj.position; if (!p.hit && Math.abs(q.z) < 3.8 && Math.abs(q.x - player.x) < 1.5 && player.y < 1.2) { p.hit = true; return p.kind; } }
+    return null;
+  }
   update(dt, speed, runTime, t, flying = false) {
     const d = speed * dt, nearZ = CONFIG.world.nearZ;
+    this.untilPad -= d;
+    if (this.padTexs) for (const k in this.padTexs) this.padTexs[k].offset.y += dt * (k === 'boost' ? -1.6 : 0.8);
+    for (let i = this.pads.length - 1; i >= 0; i--) { const p = this.pads[i]; p.obj.position.z += d; if (p.obj.position.z > nearZ + 4) { this.group.remove(p.obj); this.padPool[p.kind].push(p.obj); this.pads.splice(i, 1); } }
     this.untilPU -= d; this.untilFood -= d; if (this.suspend > 0) this.suspend -= dt;
     for (let i = this.gases.length - 1; i >= 0; i--) {
       const g = this.gases[i]; g.obj.position.z += d;
@@ -3600,7 +3654,7 @@ class Game {
     this.missions = new Missions(this.save, (m, setDone, reward) => this.onMission(m, setDone, reward));
     this.ads = new Ads(this); this.store = new Store(this);
     this.pu = {}; this.boost = 0; this.headstart = 0; this.revivesUsed = 0; this.lastStumbleAt = 0; this.biomesPassed = 0; this.missionTick = 0;
-    this.lastBumpToast = -10; this.slowT = 0; this.deathT = 0;
+    this.lastBumpToast = -10; this.slowT = 0; this.turboT = 0; this.deathT = 0;
     this.resetEvents();
     this.biomeIndex = 0; this.biomeDist = 0;
     this.fpsAvg = 60; this.perfTimer = 0; this.goodWindows = 0; this.fpsUiTimer = 0;
@@ -4057,7 +4111,7 @@ class Game {
     if (this.state !== 'menu') return;
     this.sfx.unlock();
     this.player.reset(); this.chaser.reset(); this.particles.clear();
-    this.speed = CONFIG.speed.start; this.distance = 0; this.runTime = 0; this.crumbs = 0; this.slowT = 0; this.score = 0; this.track.crumbKind = 'kirinti';
+    this.speed = CONFIG.speed.start; this.distance = 0; this.runTime = 0; this.crumbs = 0; this.slowT = 0; this.turboT = 0; this.score = 0; this.track.crumbKind = 'kirinti';
     this.pu = {}; this.boost = 0; this.headstart = 0; this.revivesUsed = 0; this.lastStumbleAt = 0; this.biomesPassed = 0;
     this.missions.startRun();
     this.voice.resetRun(); this.resetEvents(); this.world.clearSigns(); this.ui.lights(false); this.rig.spin = 0; this.teyzeToast = false;
@@ -4158,6 +4212,16 @@ class Game {
     m.report('dist', this.distance, 'set'); m.report('score', this.score, 'set'); m.report('dodge', this.track.dodged, 'set');
     m.report('nostumble', this.distance - this.lastStumbleAt, 'set'); m.report('biome', this.biomesPassed, 'set');
   }
+  hitPad(kind) { // 🟩 turbo şeridi / 🟥 yavaşlatıcı şerit
+    const el = this.ui.el.speedo;
+    if (kind === 'boost') {
+      this.turboT = 3.2; this.slowT = 0; this.sfx.play('power'); haptic(20); this.rig.shake(0.08, 0.3);
+      this.ui.banner('⚡ TURBO!'); el?.classList.remove('slow'); el?.classList.add('turbo');
+    } else {
+      this.slowT = 2.2; this.turboT = 0; this.sfx.play('stumble'); haptic(40); this.rig.shake(0.14, 0.3);
+      this.ui.toast('🐌 Kırmızıya bastın, yavaşladın!'); el?.classList.remove('turbo'); el?.classList.add('slow'); clearTimeout(this.slowCls); this.slowCls = setTimeout(() => el?.classList.remove('slow'), 2200);
+    }
+  }
   stumble() {
     this.sfx.play('stumble'); haptic(50); this.rig.shake(0.18, 0.3);
     this.slowT = 1.2; this.lastStumbleAt = this.distance;
@@ -4188,8 +4252,9 @@ class Game {
           target = Math.min(RIDER.speedMax, RIDER.speedStart + (this.speedLevel || 0) * RIDER.speedStep + Math.min(this.runTime * 0.05, 3));
         }
         if (this.slowT > 0) this.slowT -= dt;
+        if (this.turboT > 0) { this.turboT -= dt; if (this.turboT <= 0) this.ui.el.speedo?.classList.remove('turbo'); }
         if (this.ev.freezeT > 0) { this.ev.freezeT -= dt; this.speed = damp(this.speed, 0, 14, dt); if (this.ev.freezeT <= 0) this.lightSurvived(); }
-        else this.speed = this.headstart > 0 ? damp(this.speed, Math.max(target, 30) * 1.25, 3, dt) : this.slowT > 0 ? target * 0.7 : damp(this.speed, target, 2, dt);
+        else this.speed = this.headstart > 0 ? damp(this.speed, Math.max(target, 30) * 1.25, 3, dt) : this.turboT > 0 ? damp(this.speed, Math.max(target * 1.5, target + 12), 5, dt) : this.slowT > 0 ? damp(this.speed, target * 0.55, 6, dt) : damp(this.speed, target, 2, dt);
         if (MODE.rider) { // 🏍️ direksiyon girdisi (ters dünyada ekran yönü korunur); ışık yanarken direksiyon da kıpırdamak sayılır
           const st = this.input.steer * (this.rig.spin > Math.PI / 2 ? -1 : 1);
           if (this.ev.freezeT > 0 && st) this.lightCaught();
@@ -4208,6 +4273,7 @@ class Game {
         const radarOn = this.pu.radar?.t > 0; this.track.radar(radarOn);
         this.scene.fog.far = damp(this.scene.fog.far, radarOn ? this.fogFar * 1.5 : this.fogFar, 3, dt);
         const safe = this.player.flying || this.player.invulnT > 0 || this.ev.tamburT > 0;
+        { const pad = this.track.padHit(this.player); if (pad) this.hitPad(pad); }
         if (!safe && this.track.gasHit(this.player)) { this.gasCough(); if (this.state !== 'playing') break; }
         const hit = safe ? null : this.track.collide(this.player, d);
         if (hit) {
