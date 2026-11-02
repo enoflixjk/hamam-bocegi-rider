@@ -5,7 +5,7 @@ const T = 'https://appstoreconnect.apple.com';
 addEventListener('message', async (e) => {
   if (e.origin !== T || !e.data?.want) return;
   const out = {};
-  for (const k of e.data.want) { const b = await (await fetch('ach/' + k + '.png', { cache: 'no-store' })).arrayBuffer(); out[k] = b; }
+  for (const k of e.data.want) { const b = await (await fetch(k.includes('/') ? k : 'ach/' + k + '.png', { cache: 'no-store' })).arrayBuffer(); out[k] = b; }
   e.source.postMessage({ relay: out }, T);
 });
 parent.postMessage({ relayReady: true }, T);
