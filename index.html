@@ -829,11 +829,13 @@ const PLATFORM = CAP?.getPlatform?.() || 'web';
 const WEB_TEST = !NATIVE && /[?&](test|debug)\b/.test(location.search);
 const INSTAGRAM = 'https://www.instagram.com/hamambocegioyunu/';
 const ADS = {
-  // ⚠️ Bunlar Google'ın resmi TEST kimlikleri. Yayından önce AdMob panelindeki kendi kimliklerinle değiştir
-  // ve testing: false yap. (Uygulama kimliği android/app/src/main/AndroidManifest.xml içinde.)
-  testing: true,
-  android: { rewarded: 'ca-app-pub-3940256099942544/5224354917', interstitial: 'ca-app-pub-3940256099942544/1033173712', banner: 'ca-app-pub-3940256099942544/6300978111' },
-  ios:     { rewarded: 'ca-app-pub-3940256099942544/1712485313', interstitial: 'ca-app-pub-3940256099942544/4411468910', banner: 'ca-app-pub-3940256099942544/2934735716' },
+  // ✅ Makara Run: Türkiye — gerçek AdMob kimlikleri (hesap: ca-app-pub-8022761130557806)
+  // Uygulama kimlikleri yerel projeye girilir → Android: AndroidManifest.xml (APPLICATION_ID) = ca-app-pub-8022761130557806~9115255808
+  //                                            iOS: Info.plist (GADApplicationIdentifier)   = ca-app-pub-8022761130557806~5221289005
+  // Kendi telefonunda denerken AdMob > Ayarlar > Test cihazları'na telefonunu ekle (gerçek reklama tıklama!). ?adtest ile test reklamı zorlanır.
+  testing: new URLSearchParams(location.search).has('adtest'),
+  android: { rewarded: 'ca-app-pub-8022761130557806/9160534013', interstitial: 'ca-app-pub-8022761130557806/8993460160', banner: '' },
+  ios:     { rewarded: 'ca-app-pub-8022761130557806/6886171572', interstitial: 'ca-app-pub-8022761130557806/7760269541', banner: '' },
   interstitialEvery: 3,   // her 3 koşuda bir, oyun sonu ekranından çıkarken geçiş reklamı
   interstitialGap: 120,   // iki geçiş reklamı arasında en az 120 sn
   freeRuns: 2,            // ilk 2 koşu hiç geçiş reklamı yok
