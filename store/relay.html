@@ -1,12 +1,12 @@
 <!doctype html><meta charset="utf-8"><title>relay</title>
 <script>
 // App Store Connect'e başarım görsellerini aktarmak için yardımcı sayfa (yalnızca appstoreconnect.apple.com'a gönderir)
-const T = 'https://appstoreconnect.apple.com';
+const OK = ['https://appstoreconnect.apple.com', 'https://play.google.com'];
 addEventListener('message', async (e) => {
-  if (e.origin !== T || !e.data?.want) return;
+  if (!OK.includes(e.origin) || !e.data?.want) return;
   const out = {};
   for (const k of e.data.want) { const b = await (await fetch(k.includes('/') ? k : 'ach/' + k + '.png', { cache: 'no-store' })).arrayBuffer(); out[k] = b; }
-  e.source.postMessage({ relay: out }, T);
+  e.source.postMessage({ relay: out }, e.origin);
 });
-parent.postMessage({ relayReady: true }, T);
+for (const o of OK) try { parent.postMessage({ relayReady: true }, o); } catch {}
 </script>
