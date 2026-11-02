@@ -585,6 +585,7 @@
     <button class="srow" id="btnMusic"><i class="dki green"><svg class="gi" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.5V5.2l10-2v12" fill="none" stroke="#1b1840" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/><ellipse cx="6.6" cy="17.6" rx="3" ry="2.4" fill="#fff" stroke="#1b1840" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/><ellipse cx="16.6" cy="15.4" rx="3" ry="2.4" fill="#fff" stroke="#1b1840" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/></svg></i><span id="musicLabel">Müzik</span><em id="musicState">Açık</em></button>
     <button class="srow" id="btnSound"><i class="dki blue" id="soundIc"><svg class="gi" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 9.2h3.6L12 5v14l-4.8-4.2H3.6z" fill="#fff" stroke="#1b1840" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/><path d="M15.4 9a4.4 4.4 0 0 1 0 6M18 6.4a8 8 0 0 1 0 11.2" fill="none" stroke="#1b1840" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/></svg></i><span>Ses efektleri</span><em id="soundState">Açık</em></button>
     <button class="srow" id="btnInsta"><i class="dki purple"><svg class="gi" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.6" y="3.6" width="16.8" height="16.8" rx="5" fill="#fff" stroke="#1b1840" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/><circle cx="12" cy="12" r="4" fill="#f783ac" stroke="#1b1840" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/><circle cx="16.9" cy="7.1" r="1.1" fill="#1b1840"/></svg></i><span>Instagram</span><em>@hamambocegioyunu</em></button>
+    <button class="srow" id="btnPrivacy"><i class="dki blue"><svg class="gi" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8 4.6 5.6v5.6c0 4.6 3.1 8.4 7.4 9.9 4.3-1.5 7.4-5.3 7.4-9.9V5.6z" fill="#fff" stroke="#1b1840" stroke-width="2.4" stroke-linejoin="round"/><path d="m8.6 12 2.4 2.4 4.4-4.6" fill="none" stroke="#1e9e57" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></i><span>Gizlilik</span><em>Politika</em></button>
     <div class="sver">👆 Kaydır: sağ / sol şerit · yukarı zıpla · aşağı kay</div>
     <div class="sver">Makara Run: Türkiye · sürüm 1.0</div>
     <button class="b3 blue small" id="btnSettingsClose">Tamam</button>
@@ -1123,6 +1124,9 @@ const PLATFORM = CAP?.getPlatform?.() || 'web';
 // Tarayıcıda test modu (?test veya ?debug): sahte reklam ve test satın alma. Herkese açık web sürümünde reklam/satın alma yok.
 const WEB_TEST = !NATIVE && /[?&](test|debug)\b/.test(location.search);
 const INSTAGRAM = 'https://www.instagram.com/hamambocegioyunu/';
+const PRIVACY_URL = 'https://enoflixjk.github.io/hamam-bocegi-rider/privacy.html';
+// dış bağlantı: uygulamada sistem tarayıcısında açılır (oyun sayfası asla terk edilmez), web'de yeni sekme
+function openExternal(u) { try { if (window.Capacitor?.isNativePlatform?.()) { window.open(u, '_system'); return; } if (!window.open(u, '_blank', 'noopener')) location.href = u; } catch {} }
 const ADS = {
   // ✅ Makara Run: Türkiye — gerçek AdMob kimlikleri (hesap: ca-app-pub-8022761130557806)
   // Uygulama kimlikleri yerel projeye girilir → Android: AndroidManifest.xml (APPLICATION_ID) = ca-app-pub-8022761130557806~9115255808
@@ -1194,12 +1198,13 @@ class Ads {
   }
   get noAds() { return !!this.game.save.owned.reklamsiz; }
   async init() {
-    const A = this.plugin; if (!A) return;
+    const A = this.plugin; if (!A || this._inited) return; this._inited = true;
     try {
-      await A.initialize({ initializeForTesting: ADS.testing });
-      // GDPR / izin formu (AB kullanıcıları) ve iOS takip izni
-      try { const info = await A.requestConsentInfo(); if (info?.isConsentFormAvailable && info.status === 'REQUIRED') await A.showConsentForm(); } catch {}
+      // iOS takip izni (ATT): reklam SDK'sı başlamadan ÖNCE ve kullanıcı dokunduğu anda (uygulama etkinken) sorulur
       if (PLATFORM === 'ios') { try { await A.requestTrackingAuthorization(); } catch {} }
+      await A.initialize({ initializeForTesting: ADS.testing });
+      // GDPR / izin formu (AB kullanıcıları)
+      try { const info = await A.requestConsentInfo(); if (info?.isConsentFormAvailable && info.status === 'REQUIRED') await A.showConsentForm(); } catch {}
       A.addListener('onRewardedVideoAdReward', () => { this._earned = true; });
       A.addListener('onRewardedVideoAdDismissed', () => this._done?.());
       A.addListener('onRewardedVideoAdFailedToShow', () => this._done?.());
@@ -4322,7 +4327,7 @@ class UI {
           { img: !!ICONS[p.icon], cls: 'pack' + (p.best && !own ? ' hot' : ''), tag: own ? '' : p.best });
       }
       const n = document.createElement('div'); n.className = 'sale-note';
-      n.textContent = NATIVE ? (IAP_ENABLED ? 'Ödeme Google Play / App Store hesabınla yapılır.' : '📺 Reklam izle, bedava kırıntı kap. Paketler yakında!') : WEB_TEST ? 'Tarayıcıda bu bir TESTTİR, ücret alınmaz. Gerçek ödeme telefondaki uygulamada çalışır.' : 'Bu web sürümü erken erişim. Paketler mobil uygulamayla gelecek. Fikrini Instagram\'da yaz: @hamambocegioyunu';
+      n.textContent = NATIVE ? (IAP_ENABLED ? 'Ödeme Google Play / App Store hesabınla yapılır.' : '📺 Reklam izle, bedava kırıntı kap.') : WEB_TEST ? 'Tarayıcıda bu bir TESTTİR, ücret alınmaz. Gerçek ödeme telefondaki uygulamada çalışır.' : 'Bu web sürümü erken erişim. Paketler mobil uygulamayla gelecek. Fikrini Instagram\'da yaz: @hamambocegioyunu';
       list.appendChild(n);
     }
   }
@@ -4345,7 +4350,7 @@ class UI {
       const el = document.createElement('div'); el.className = 'card';
       el.innerHTML = `<div class="ic">${c.by ? '✅' : '🗳️'}</div><div class="tx"><b>${c.title}</b><span>${c.by ? 'Fikir: ' + c.by : c.poll}</span></div>`;
       const b = document.createElement('button'); b.className = 'b3 buy pink'; b.textContent = c.by ? 'OYUNDA' : 'OY VER'; b.disabled = !!c.by;
-      b.onclick = () => { try { window.open(INSTAGRAM, '_blank', 'noopener') || (location.href = INSTAGRAM); } catch { location.href = INSTAGRAM; } };
+      b.onclick = () => openExternal(INSTAGRAM);
       el.appendChild(b); list.appendChild(el);
     }
   }
@@ -4465,7 +4470,7 @@ class Game {
     this.renderer.compile(this.scene, this.camera);
     this.toMenu(true); this.state = 'splash';
     this.ui.setProgress(1); this.ui.showSplashReady(this.save);
-    this.ads.init(); this.store.init();
+    this.store.init(); // reklamlar BAŞLA'ya dokununca başlar (ATT izni o anda sorulur)
     this.clock.start();
     this.renderer.setAnimationLoop(() => this.frame());
     this.loadRest();
@@ -4607,7 +4612,7 @@ class Game {
     });
     ui.el.btnMusic.addEventListener('click', () => { sfx.unlock(); this.music.set(this.music.mode === 'off' ? 'menu' : this.music.mode); ui.setMusic(this.music.toggle()); });
     ui.el.tapStart.addEventListener('click', () => this.leaveSplash());
-    document.getElementById('btnIdea').addEventListener('click', () => { try { (window.open(INSTAGRAM, '_blank', 'noopener') || (location.href = INSTAGRAM)); } catch { location.href = INSTAGRAM; } });
+    document.getElementById('btnIdea').addEventListener('click', () => openExternal(INSTAGRAM));
     ui.el.btnRestore.addEventListener('click', () => this.store.restore());
     ui.el.btnReviveAd.addEventListener('click', () => this.reviveWithAd());
     ui.el.btnDouble.addEventListener('click', () => this.doubleCrumbs());
@@ -4629,6 +4634,7 @@ class Game {
       sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.classList.add('hidden'); });
       document.getElementById('btnSound').addEventListener('click', () => ui.el.btnMute.click());
       document.getElementById('btnInsta').addEventListener('click', () => document.getElementById('btnIdea').click());
+      document.getElementById('btnPrivacy').addEventListener('click', () => openExternal(PRIVACY_URL));
       document.getElementById('btnSkins').addEventListener('click', () => { this.openShop(); document.querySelector('#screen-shop [data-tab="skins"]')?.click(); });
     }
     ui.el.btnMissions.addEventListener('click', () => { ui.renderMissions(this.missions, this.save); ui.show('missions'); });
@@ -4713,7 +4719,7 @@ class Game {
   /* ---- açılış / reklam kancaları ---- */
   leaveSplash() {
     if (this.state !== 'splash') return;
-    this.sfx.unlock(); this.voice.preloadAll();
+    this.sfx.unlock(); this.voice.preloadAll(); this.ads.init();
     this.ui.leaveSplash(); this.toMenu();
   }
   onAdOpen() { this._adPrev = this.music.mode; this.music.set('off'); this.voice.stop(); this.sfx.duck(true); }
