@@ -38,6 +38,11 @@
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #2a2268; color: var(--white); font-family: var(--f-ui);
     user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none; overscroll-behavior: none; }
+  /* 🖥️ geniş ekranda (PC/tablet yatay) oyun telefon gibi ortada dik bir sütunda: net görüntü + daha az piksel */
+  @media (min-aspect-ratio: 4/5) {
+    html { background: #1b1840 radial-gradient(ellipse at 50% 40%, #3a2f8a 0%, #1b1840 70%); }
+    body { width: min(100vw, 56.25vh); margin: 0 auto; transform: translateZ(0); box-shadow: 0 0 60px rgba(0,0,0,.5); }
+  }
   button { font-family: inherit; color: inherit; }
   button:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
   #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
@@ -1122,6 +1127,7 @@ const DEBUG = new URLSearchParams(location.search).has('debug');
 const LINEUP = new URLSearchParams(location.search).has('lineup');
 const IS_TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 const EMPTY = Object.freeze([]);
+const VIEW = { get w() { return document.body.clientWidth || innerWidth; }, get h() { return document.body.clientHeight || innerHeight; } }; // oyun sütunu (PC'de ortadaki dik alan)
 // ⚡ GRAFİK KATMANI: Android'de zayıf GPU/az RAM → düşük; diğer Android → orta; iPhone/masaüstü → yüksek
 const QUALITY = (() => {
   const ua = navigator.userAgent, android = /Android/i.test(ua);
@@ -1134,7 +1140,7 @@ const QUALITY = (() => {
   if (['low', 'mid', 'high'].includes(q || saved)) tier = q || saved;
   // mp: ekrana çizilen en fazla piksel (milyon) — doluluk (fill-rate) zayıf GPU'larda asıl darboğaz
   const T = { low: { pr: 1, mp: 0.45, aa: false, shadow: false, env: false, lambert: true, fog: [30, 105], cull: 108 }, mid: { pr: 1.5, mp: 0.9, aa: false, shadow: false, env: true, fog: [35, 125], cull: 128 }, high: { pr: 2, mp: 1.8, aa: true, shadow: true, shadowSize: 1024, env: true, fog: [35, 135], cull: 140 } }[tier];
-  if (soft) T.mp = 0.3;
+  if (soft) T.mp = 0.5; // ortadaki dik sütun ≈ 0.42 MP → GPU'suz PC'de bile net
   return { tier, gpu, android, soft, ...T };
 })();
 /* 🏍️ SÜRÜŞ MODU: 'rider' = Traffic Rider tarzı serbest direksiyon + sürücü gözü kamera, 'lane' = klasik 3 şerit (Subway) */
@@ -1843,14 +1849,14 @@ class Input {
       const p = this.p; if (!p || p.id !== e.pointerId) return;
       if (MODE.rider) { // parmağı kaydırınca o tarafa dön; hızlı dikey fiske = zıpla / kay
         p.cx = e.clientX; const dxs = e.clientX - p.x;
-        if (MODE.ctl === 'swipe') this.touchSteer = Math.abs(dxs) > 8 ? clamp(dxs / (innerWidth * 0.14), -1, 1) : 0; // parmağı sağa-sola kaydır
+        if (MODE.ctl === 'swipe') this.touchSteer = Math.abs(dxs) > 8 ? clamp(dxs / (VIEW.w * 0.14), -1, 1) : 0; // parmağı sağa-sola kaydır
         if (p.done) return;
-        const dy = e.clientY - p.y, th = Math.max(26, innerHeight * 0.06);
+        const dy = e.clientY - p.y, th = Math.max(26, VIEW.h * 0.06);
         if (Math.abs(dy) > th && Math.abs(dy) > Math.abs(dxs) * 1.4 && performance.now() - p.t < 350) { p.done = true; this.push(dy > 0 ? 'slide' : 'jump'); }
         return;
       }
       if (p.done) return;
-      const dx = e.clientX - p.x, dy = e.clientY - p.y, th = Math.max(18, Math.min(innerWidth, innerHeight) * 0.05);
+      const dx = e.clientX - p.x, dy = e.clientY - p.y, th = Math.max(18, Math.min(VIEW.w, VIEW.h) * 0.05);
       if (dx * dx + dy * dy < th * th) return;
       p.done = true;
       if (Math.abs(dx) > Math.abs(dy)) this.push(dx > 0 ? 'right' : 'left'); else this.push(dy > 0 ? 'slide' : 'jump');
@@ -3995,7 +4001,7 @@ class Game {
     this.scene.background = this.skyColor;
     this.scene.fog = new THREE.Fog(this.skyColor, 35, 135); // sis rengi = ufuk rengi (aynı Color nesnesi)
     this.scene.fog.color = this.skyColor; // HATA DÜZELTME: Fog rengi kopyalıyordu → bölüm değişince sis hep mutfak renginde kalıyordu
-    this.camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 220);
+    this.camera = new THREE.PerspectiveCamera(60, VIEW.w / VIEW.h, 0.1, 220);
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     if (QUALITY.env) this.scene.environment = pmrem.fromScene(new RoomEnvironment(this.renderer), 0.04).texture; pmrem.dispose();
     this.hemi = new THREE.HemisphereLight(0xe8f4ff, 0x9a7a5a, 0.85); // ☀️ canlı, sıcak gün ışığı this.scene.add(this.hemi);
@@ -4224,11 +4230,11 @@ class Game {
     addEventListener('pagehide', () => this.saveStats());
   }
   onResize() {
-    const w = innerWidth, h = innerHeight;
+    const w = VIEW.w, h = VIEW.h;
     // ⚡ piksel bütçesi: büyük ekranda (PC) çözünürlüğü otomatik düşür, telefon kadar piksel çiz
     const cap = Math.sqrt(QUALITY.mp * 1e6 / Math.max(1, w * h));
-    this.maxPixelRatio = Math.max(0.35, Math.min(window.devicePixelRatio || 1, CONFIG.render.maxPixelRatio, QUALITY.pr, cap));
-    this.minPixelRatio = Math.max(0.3, this.maxPixelRatio * 0.55);
+    this.maxPixelRatio = Math.max(QUALITY.soft ? 0.6 : 1, Math.min(window.devicePixelRatio || 1, CONFIG.render.maxPixelRatio, QUALITY.pr, cap));
+    this.minPixelRatio = QUALITY.soft ? Math.max(0.6, this.maxPixelRatio * 0.75) : Math.min(this.maxPixelRatio, 1); // bulanıklaştırma yok
     if (this.pixelRatio > this.maxPixelRatio || !this.pixelRatio) { this.pixelRatio = this.maxPixelRatio; this.renderer.setPixelRatio(this.pixelRatio); }
     this.renderer.setSize(w, h, false); this.camera.aspect = w / h;
     this.rig?.onResize(this.camera.aspect); this.camera.updateProjectionMatrix();
