@@ -705,7 +705,8 @@ const CONFIG = {
    alignX: modelin uzun kenarını şeride dik (X) çevirir.  rotationX/Y: ön ayar.
    ph: GLB yoksa kullanılacak placeholder türü. tex: doku üst sınırı.
    ===================================================================== */
-const FLY_HEIGHT = 3.4;   // kanatlarla uçuş yüksekliği
+const FLY_HEIGHT = 3.4;
+const RAMP = { W: 1.75, L: 3.6, H: 0.85, boost: 1.32 }; // 🛹 rampa ölçüleri ve fırlatma gücü (zıplama hızının katı)   // kanatlarla uçuş yüksekliği
 const MODEL_DIR = 'models/';
 const ASSETS = {
   // Ortak
@@ -1433,6 +1434,7 @@ class Sfx {
     switch (name) {
       case 'lane':    this._noise(0.12, 2600, 700, 0.35); break;
       case 'jump':    this._tone('square', 260, 780, 0.16, 0.1); break;
+      case 'ramp':    this._tone('sawtooth', 180, 900, 0.32, 0.14); this._noise(0.35, 1800, 5000, 0.3); this._tone('triangle', 660, 1320, 0.2, 0.1, 0.12); break; // 🛹 viyuuu
       case 'land':    this._tone('sine', 150, 50, 0.12, 0.45); break;
       case 'slide':   this._noise(0.3, 900, 200, 0.4); break;
       case 'bump':    this._tone('square', 180, 150, 0.06, 0.14); this._tone('square', 140, 110, 0.09, 0.14, 0.08); break;
@@ -1455,27 +1457,42 @@ class Sfx {
 }
 
 /* =====================================================================
-   5b) MÜZİK — tamamen kodla üretilen özgün 9/8 roman havası (telifsiz, dosyasız)
+   5b) MÜZİK — kodla üretilen özgün "Anadolu funk" (telifsiz, dosyasız)
    ---------------------------------------------------------------------
-   Usul: 9/8 (2+2+2+3) · Makam: Re hicaz · Çalgılar: darbuka (düm/tek/ka), bas, klarnet, akordeon vuruşu
-   Menüde hafif, koşuda tam; hız arttıkça tempo biraz artar. Böcek konuşurken kısılır, molada boğuklaşır.
+   4/4 · ~124 BPM · Mi Kürdi (E F G A B C D) · 70'ler Anadolu rock havası:
+   tezeneli bağlama riffi, funk bas, davul seti (kick/trampet/el çırpma/zil), Hammond org vuruşları.
+   Bölümler: giriş → riff → nakarat melodisi → riff 2 → nakarat → ara (break). Hız arttıkça tempo biraz artar.
    ===================================================================== */
 const MUSIC = (() => {
-  const R = null;
-  // [yarım ton (Re4'e göre), kaç sekizlik]  · R = es
-  const A1 = [[7,2],[7,1],[8,1],[7,2],[5,1],[4,2],  [5,2],[4,1],[1,1],[4,2],[1,1],[0,2],  [0,1],[4,1],[7,2],[12,2],[10,1],[8,2],  [7,2],[5,1],[4,1],[1,2],[0,3]];
-  const A2 = [[7,2],[7,1],[8,1],[7,2],[5,1],[4,2],  [5,2],[4,1],[1,1],[4,2],[1,1],[0,2],  [0,1],[4,1],[7,2],[12,2],[10,1],[8,2],  [5,1],[4,1],[5,1],[7,1],[8,2],[7,3]];
-  const B1 = [[12,2],[12,1],[10,1],[12,2],[13,1],[12,2],  [10,2],[8,1],[7,1],[8,2],[7,1],[5,2],  [4,1],[5,1],[7,2],[8,1],[7,1],[5,1],[4,1],[1,1],  [1,2],[4,1],[1,1],[0,2],[R,1],[0,1],[0,1]];
-  const B2 = [[12,1],[R,1],[12,1],[13,1],[16,2],[13,1],[12,2],  [10,1],[12,1],[10,1],[8,1],[7,2],[8,1],[7,2],  [5,1],[4,1],[5,1],[7,1],[4,2],[1,1],[4,2],  [0,2],[7,1],[12,1],[0,2],[R,3]];
-  const C1 = [[R,2],[0,1],[1,1],[4,1],[R,1],[4,1],[5,1],[7,1],  [R,2],[7,1],[8,1],[10,1],[R,1],[10,1],[8,1],[7,1],  [R,2],[5,1],[4,1],[1,1],[R,1],[1,1],[4,1],[1,1],  [0,2],[R,1],[0,1],[R,2],[0,1],[0,1],[0,1]];
-  // her ölçünün bas kökü (Re2'ye göre yarım ton)
-  const BASS = { A1: [0, 5, 0, 0], A2: [0, 5, 0, 7], B1: [0, -2, 5, 0], B2: [0, -2, 5, 0], C1: [0, 0, -2, 0] };
-  const FORM = ['A1', 'A2', 'A1', 'A2', 'B1', 'B2', 'C1', 'C1', 'B1', 'B2'];
-  const PHR = { A1, A2, B1, B2, C1 };
-  //            0    1    2    3    4    5    6    7    8   (sekizlik)
-  const DRUM = ['D', 'k', 'T', 'k', 'D', 'k', 'T', 'T', 'k'];
-  const DRUM_FILL = ['D', 'T', 'k', 'T', 'D', 'T', 'T', 'T', 'T'];
-  return { PHR, BASS, FORM, DRUM, DRUM_FILL };
+  // bağlama: [yarım ton (Mi3'e göre), kaç onaltılık] — her satır 1 ölçü (16)
+  const RIFF  = [[0,1],[0,1],[12,1],[0,1],[10,1],[0,1],[8,1],[0,1],[7,2],[5,1],[3,1],[1,2],[0,2]];
+  const RIFF2 = [[0,1],[0,1],[12,1],[0,1],[10,1],[0,1],[8,1],[7,1],[8,2],[10,1],[8,1],[7,4]];
+  const RIFF3 = [[12,1],[12,1],[15,1],[12,1],[13,2],[12,1],[10,1],[8,2],[7,1],[8,1],[7,2],[5,2]];
+  const RIFF4 = [[3,1],[3,1],[5,1],[3,1],[1,2],[0,1],[1,1],[3,2],[1,1],[0,1],[-2,2],[0,2]];
+  const M1 = [[7,4],[8,2],[7,2],[5,3],[3,1],[1,4]];
+  const M2 = [[3,2],[5,2],[7,4],[5,2],[3,2],[1,2],[0,2]];
+  const M3 = [[12,4],[13,2],[12,2],[10,3],[8,1],[7,4]];
+  const M4 = [[8,2],[7,2],[5,2],[3,2],[1,4],[0,4]];
+  const T1 = [[0,8],[1,8]], T2 = [[3,8],[1,8]], T3 = [[0,8],[-2,8]], T4 = [[0,12],[null,4]];
+  // 4 ölçülük bölümler: bağlama, davul, akor kökleri (Mi1'e göre)
+  const SEC = {
+    intro: { saz: [RIFF, RIFF, RIFF, RIFF2], dr: 'half', roots: [0, 0, 0, 0] },
+    riff:  { saz: [RIFF, RIFF2, RIFF, RIFF2], dr: 'full', roots: [0, 0, 0, 0] },
+    riffB: { saz: [RIFF3, RIFF4, RIFF3, RIFF2], dr: 'full', roots: [0, -2, 0, 1] },
+    mel:   { saz: [M1, M2, M3, M4], dr: 'full', roots: [0, -2, -4, 1], lead: true },
+    brk:   { saz: [T1, T2, T3, T4], dr: 'break', roots: [0, 1, -2, 0], trem: true },
+  };
+  const FORM = ['intro', 'riff', 'mel', 'riffB', 'riff', 'mel', 'brk', 'riffB'];
+  // davul (16'lık): K=kick S=trampet C=el çırpma h=kapalı zil o=açık zil
+  const DR = {
+    full:  ['Kh', 'h', 'h', 'Kh', 'Sh', 'h', 'Kh', 'o', 'Kh', 'h', 'Kh', 'h', 'Sh', 'h', 'h', 'o'],
+    fill:  ['Kh', 'h', 'h', 'Kh', 'Sh', 'h', 'Kh', 'S', 'Kh', 'S', 'S', 'h', 'S', 'S', 'SC', 'SC'],
+    half:  ['K', '', 'h', '', 'h', '', 'h', '', 'K', '', 'h', '', 'h', '', 'h', 'h'],
+    break: ['K', '', '', '', 'C', '', '', 'h', '', '', 'K', '', 'C', '', 'h', 'h'],
+  };
+  // funk bas (16'lık): göreli yarım ton (null = yok)
+  const BASS = [0, null, null, 12, null, null, 0, null, 0, null, 10, 12, null, 7, null, 0];
+  return { SEC, FORM, DR, BASS };
 })();
 class Music {
   constructor(sfx) {
@@ -1487,13 +1504,13 @@ class Music {
     this.ctx = ctx;
     this.out = ctx.createGain(); this.out.gain.value = 0;
     this.lp = ctx.createBiquadFilter(); this.lp.type = 'lowpass'; this.lp.frequency.value = 18000; this.lp.Q.value = 0.7;
-    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3;
-    this.bus = ctx.createGain(); this.bus.gain.value = 1;
+    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.18;
+    this.bus = ctx.createGain(); this.bus.gain.value = 1.35;
     this.bus.connect(this.lp).connect(comp).connect(this.out).connect(ctx.destination);
-    // kısa oda yankısı (gecikme + geri besleme), klarnete
-    this.verb = ctx.createDelay(0.5); this.verb.delayTime.value = 0.19;
-    const fb = ctx.createGain(); fb.gain.value = 0.22; const wet = ctx.createGain(); wet.gain.value = 0.18;
-    const vf = ctx.createBiquadFilter(); vf.type = 'lowpass'; vf.frequency.value = 2400;
+    // bant yankısı (70'ler tape echo) — bağlama ve orga
+    this.verb = ctx.createDelay(0.6); this.verb.delayTime.value = 0.36;
+    const fb = ctx.createGain(); fb.gain.value = 0.28; const wet = ctx.createGain(); wet.gain.value = 0.16;
+    const vf = ctx.createBiquadFilter(); vf.type = 'bandpass'; vf.frequency.value = 1600; vf.Q.value = 0.6;
     this.verb.connect(vf).connect(fb).connect(this.verb); vf.connect(wet).connect(this.bus);
     this.noise = this.sfx.noiseBuf;
     return true;
@@ -1508,109 +1525,108 @@ class Music {
   apply() {
     if (!this.out) return;
     const t = this.ctx.currentTime;
-    const vol = !this.on || this.mute || this.mode === 'off' ? 0 : this.mode === 'pause' ? 0.16 : (this.ducked ? 0.11 : this.mode === 'menu' ? 0.3 : 0.34);
+    const vol = !this.on || this.mute || this.mode === 'off' ? 0 : this.mode === 'pause' ? 0.15 : (this.ducked ? 0.1 : this.mode === 'menu' ? 0.28 : 0.33);
     this.out.gain.setTargetAtTime(vol, t, 0.12);
-    this.lp.frequency.setTargetAtTime(this.mode === 'pause' ? 700 : 18000, t, 0.15);
+    this.lp.frequency.setTargetAtTime(this.mode === 'pause' ? 650 : this.mode === 'menu' ? 5200 : 18000, t, 0.2);
   }
   duck(on) { if (on !== this.ducked) { this.ducked = on; this.apply(); } }
   setMuted(m) { this.mute = m; this.apply(); }
   toggle() { this.on = !this.on; storage.set('hbr_music', this.on); if (this.on && this.mode !== 'off' && !this.started) this.start(); this.apply(); return this.on; }
-  setSpeed(r) { this.tempo = 1 + clamp(r, 0, 1) * 0.12; } // hızlandıkça tempo %12'ye kadar artar
+  setSpeed(r) { this.tempo = 1 + clamp(r, 0, 1) * 0.1; } // hızlandıkça tempo %10'a kadar artar
   start() {
-    this.started = true; this.step = 0; this.pIdx = 0; this.nIdx = 0; this.nLeft = 0; this.bar = 0;
+    this.started = true; this.step = 0; this.bar = 0; this.sIdx = 0; this.nIdx = 0; this.nLeft = 0; this.curPh = null;
     this.next = this.ctx.currentTime + 0.08;
     this.timer = setInterval(() => this.schedule(), 30);
   }
-  get eighth() { return (60 / 156 / 2) / this.tempo; } // ≈156 vuruş/dk (4'lük)
+  get six() { return (60 / 124 / 4) / this.tempo; } // onaltılık nota süresi (≈124 BPM)
   schedule() {
     const ctx = this.ctx; if (!ctx || ctx.state !== 'running') { if (ctx) this.next = Math.max(this.next, ctx.currentTime + 0.05); return; }
     if (this.next < ctx.currentTime - 0.3) this.next = ctx.currentTime + 0.05; // sekme arka plandan döndü
-    while (this.next < ctx.currentTime + 0.14) { this.tick(this.next); this.next += this.eighth; }
+    while (this.next < ctx.currentTime + 0.14) { this.tick(this.next); this.next += this.six; }
   }
   tick(t) {
-    const M = MUSIC, s = this.step, name = M.FORM[this.pIdx], phrase = M.PHR[name];
-    const barInPhrase = Math.floor(this.bar % 4), run = this.mode === 'run', e = this.eighth;
-    const lastBar = barInPhrase === 3 && (this.pIdx % 2 === 1);
+    const M = MUSIC, s = this.step, secName = M.FORM[this.sIdx], sec = M.SEC[secName], bIn = this.bar % 4, run = this.mode === 'run', d = this.six;
+    const swing = s % 2 ? d * 0.12 : 0; t += swing; // hafif funk sallantısı
     // davul
-    const hit = (lastBar ? M.DRUM_FILL : M.DRUM)[s];
-    if (hit === 'D') this.dum(t, 1); else if (hit === 'T') this.tek(t, s === 7 || s === 2 ? 0.95 : 0.8); else if (run || s % 2) this.ka(t, run ? 0.5 : 0.35);
-    // bas: düm-tek gibi "oom-pah"
-    const root = M.BASS[name][barInPhrase];
-    if (s === 0 || s === 4) this.bass(t, root, e * 1.6, 1);
-    else if (s === 2 || s === 6) this.bass(t, root + 7, e * 0.8, 0.7);
-    else if (s === 8 && run) this.bass(t, root + 12, e * 0.6, 0.55);
-    // akordeon vuruşu (pah)
-    if (s === 2 || s === 6) this.stab(t, root, e * 0.7, run ? 1 : 0.7);
-    // klarnet
-    if (this.nLeft <= 0) {
-      const [n, len] = phrase[this.nIdx];
-      if (n !== null) this.clarinet(t, n, len * e * 0.92, len, run ? 1 : 0.75);
+    const kind = run ? (bIn === 3 && sec.dr === 'full' ? 'fill' : sec.dr) : 'half';
+    const hit = M.DR[kind][s];
+    if (hit.includes('K')) this.kick(t, s === 0 ? 1 : 0.85);
+    if (hit.includes('S')) this.snare(t, s === 4 || s === 12 ? 1 : 0.6);
+    if (hit.includes('C')) this.clap(t, 0.9);
+    if (hit.includes('h')) this.hat(t, s % 4 === 0 ? 0.55 : s % 2 ? 0.28 : 0.4, 0.03);
+    if (hit.includes('o')) this.hat(t, 0.4, 0.16);
+    if (run && s % 2 === 1 && sec.dr !== 'break') this.shaker(t);
+    // bas
+    const root = sec.roots[bIn], bn = M.BASS[s];
+    if (bn !== null && (run || s % 4 === 0)) this.bass(t, root + bn, d * (bn === 0 && s % 8 === 0 ? 1.8 : 0.9), s % 4 === 0 ? 1 : 0.75);
+    // org: arka vuruşlarda kısa akor
+    if (s === 4 || s === 12 || (run && (s === 7 || s === 15))) this.organ(t, root, d * (s % 4 === 0 ? 1.6 : 0.7), root === 1 ? [0, 4, 7] : [0, 3, 7], run ? 1 : 0.8);
+    // bağlama
+    const ph = sec.saz[bIn];
+    if (s === 0) { this.curPh = ph; this.nIdx = 0; this.nLeft = 0; }
+    if (this.nLeft <= 0 && this.curPh && this.nIdx < this.curPh.length) {
+      const [n, len] = this.curPh[this.nIdx];
+      if (n !== null) {
+        if (sec.trem || (sec.lead && len >= 3)) for (let k = 0; k < len; k++) this.saz(t + k * d, n + (sec.lead ? 12 : 0), d * 0.95, k === 0 ? 1 : 0.62, k === 0); // tezene vuruşları
+        else this.saz(t, n + (sec.lead ? 12 : 0), d * len * 0.9, run ? 1 : 0.8, true);
+      }
       this.nLeft = len; this.nIdx++;
-      if (this.nIdx >= phrase.length) { this.nIdx = 0; this.pIdx = (this.pIdx + 1) % M.FORM.length; }
     }
     this.nLeft--;
-    // komik süs: bölüm başında "vıyuuu" kayması
-    if (s === 0 && barInPhrase === 0 && run && (this.pIdx === 4 || this.pIdx === 0) && this.nIdx <= 1) this.slide(t);
-    this.step = (s + 1) % 9; if (this.step === 0) this.bar++;
+    this.step = (s + 1) % 16;
+    if (this.step === 0) { this.bar++; if (this.bar % 4 === 0) this.sIdx = (this.sIdx + 1) % M.FORM.length; }
   }
   env(g, t, a, peak, d) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + d); }
-  dum(t, v) {
-    const c = this.ctx, o = c.createOscillator(), g = c.createGain();
-    o.type = 'sine'; o.frequency.setValueAtTime(115, t); o.frequency.exponentialRampToValueAtTime(52, t + 0.18);
-    this.env(g, t, 0.004, 0.9 * v, 0.32); o.connect(g).connect(this.bus); o.start(t); o.stop(t + 0.4);
-    this.hiss(t, 0.05, 900, 0.18 * v, 'lowpass');
-  }
-  tek(t, v) {
-    const c = this.ctx, o = c.createOscillator(), g = c.createGain();
-    o.type = 'triangle'; o.frequency.setValueAtTime(820, t); o.frequency.exponentialRampToValueAtTime(640, t + 0.05);
-    this.env(g, t, 0.002, 0.22 * v, 0.07); o.connect(g).connect(this.bus); o.start(t); o.stop(t + 0.1);
-    this.hiss(t, 0.06, 4200, 0.32 * v, 'bandpass');
-  }
-  ka(t, v) { this.hiss(t, 0.035, 6000, 0.16 * v, 'highpass'); }
-  hiss(t, dur, f, v, type) {
+  hz(semi, base) { return base * Math.pow(2, semi / 12); }
+  noiseHit(t, dur, f, v, type, q = 1) {
     const c = this.ctx, src = c.createBufferSource(); src.buffer = this.noise;
-    const fl = c.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = 1.1;
-    const g = c.createGain(); this.env(g, t, 0.002, v, dur);
+    const fl = c.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+    const g = c.createGain(); this.env(g, t, 0.001, v, dur);
     src.connect(fl).connect(g).connect(this.bus); src.start(t, Math.random() * 0.8); src.stop(t + dur + 0.03);
   }
-  hz(semi, base) { return base * Math.pow(2, semi / 12); }
-  bass(t, semi, dur, v) {
-    const c = this.ctx, o = c.createOscillator(), f = c.createBiquadFilter(), g = c.createGain();
-    o.type = 'sawtooth'; o.frequency.value = this.hz(semi, 73.42); // Re2
-    f.type = 'lowpass'; f.frequency.setValueAtTime(900, t); f.frequency.exponentialRampToValueAtTime(220, t + dur); f.Q.value = 6;
-    this.env(g, t, 0.006, 0.34 * v, dur); o.connect(f).connect(g).connect(this.bus); o.start(t); o.stop(t + dur + 0.05);
+  kick(t, v) {
+    const c = this.ctx, o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(155, t); o.frequency.exponentialRampToValueAtTime(46, t + 0.12);
+    this.env(g, t, 0.003, 0.85 * v, 0.3); o.connect(g).connect(this.bus); o.start(t); o.stop(t + 0.36);
+    this.noiseHit(t, 0.012, 3000, 0.25 * v, 'highpass'); // vuruş tıkı
   }
-  stab(t, root, dur, v) { // akordeon: kare dalga üçlü akor, kısa
+  snare(t, v) {
+    const c = this.ctx, o = c.createOscillator(), g = c.createGain();
+    o.type = 'triangle'; o.frequency.setValueAtTime(210, t); o.frequency.exponentialRampToValueAtTime(160, t + 0.06);
+    this.env(g, t, 0.002, 0.32 * v, 0.09); o.connect(g).connect(this.bus); o.start(t); o.stop(t + 0.14);
+    this.noiseHit(t, 0.16, 2400, 0.42 * v, 'bandpass', 0.8);
+  }
+  clap(t, v) { for (let i = 0; i < 3; i++) this.noiseHit(t + i * 0.011, i === 2 ? 0.14 : 0.02, 1300, 0.42 * v, 'bandpass', 1.6); }
+  hat(t, v, dur) { this.noiseHit(t, dur, 8200, 0.22 * v, 'highpass', 0.7); }
+  shaker(t) { this.noiseHit(t, 0.05, 6200, 0.06, 'bandpass', 2); }
+  bass(t, semi, dur, v) { // tok funk bas: kare + alt sinüs, hızlı kapanan filtre
+    const c = this.ctx, o = c.createOscillator(), sub = c.createOscillator(), f = c.createBiquadFilter(), g = c.createGain();
+    const fr = this.hz(semi, 41.2 * 2); o.type = 'square'; o.frequency.value = fr; sub.type = 'sine'; sub.frequency.value = fr / 2;
+    f.type = 'lowpass'; f.frequency.setValueAtTime(1400, t); f.frequency.exponentialRampToValueAtTime(260, t + 0.09); f.Q.value = 7;
+    this.env(g, t, 0.004, 0.24 * v, dur); o.connect(f); sub.connect(f); f.connect(g).connect(this.bus);
+    o.start(t); sub.start(t); o.stop(t + dur + 0.05); sub.stop(t + dur + 0.05);
+  }
+  organ(t, root, dur, chord, v) { // Hammond benzeri: 3 çeki (8', 4', 2 2/3')
     const c = this.ctx, g = c.createGain(), f = c.createBiquadFilter();
-    f.type = 'lowpass'; f.frequency.value = 2200; this.env(g, t, 0.01, 0.05 * v, dur);
-    g.connect(f).connect(this.bus);
-    for (const iv of [0, 4, 7]) { // majör (Re hicaz'ın Re-Fa#-La'sı)
-      const o = c.createOscillator(); o.type = 'square'; o.frequency.value = this.hz(root + iv + 12, 146.83); o.detune.value = (Math.random() - 0.5) * 12;
+    f.type = 'lowpass'; f.frequency.value = 3200; this.env(g, t, 0.008, 0.06 * v, dur); g.connect(f).connect(this.bus); f.connect(this.verb);
+    for (const iv of chord) for (const [mul, typ] of [[1, 'sine'], [2, 'sine'], [3, 'triangle']]) {
+      const o = c.createOscillator(); o.type = typ; o.frequency.value = this.hz(root + iv + 12, 164.81) * mul / 2; o.detune.value = (Math.random() - 0.5) * 6;
       o.connect(g); o.start(t); o.stop(t + dur + 0.05);
     }
   }
-  clarinet(t, semi, dur, len, v) {
-    const c = this.ctx, f0 = this.hz(semi, 293.66); // Re4
-    const o = c.createOscillator(), o2 = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
-    o.type = 'square'; o2.type = 'triangle'; o.frequency.value = f0; o2.frequency.value = f0 * 2.001;
-    const g2 = c.createGain(); g2.gain.value = 0.25;
-    // uzun notalarda vibrato
-    if (len >= 2) { const l = c.createOscillator(), lg = c.createGain(); l.frequency.value = 5.6; lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(f0 * 0.012, t + 0.18); l.connect(lg); lg.connect(o.frequency); lg.connect(o2.frequency); l.start(t); l.stop(t + dur + 0.1); }
-    // hafif aşağıdan kayarak giriş (klarnet "tavrı")
-    o.frequency.setValueAtTime(f0 * 0.97, t); o.frequency.exponentialRampToValueAtTime(f0, t + 0.035);
-    f.type = 'lowpass'; f.frequency.setValueAtTime(1500, t); f.frequency.linearRampToValueAtTime(2900, t + 0.05); f.Q.value = 1.5;
-    const pk = 0.13 * v;
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(pk, t + 0.02);
-    g.gain.setValueAtTime(pk * (len >= 2 ? 0.9 : 0.75), t + Math.max(0.03, dur - 0.04)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.03);
+  saz(t, semi, dur, v, accent) { // bağlama: parlak tel, tezene vuruşu, metalik yankı
+    const c = this.ctx, f0 = this.hz(semi, 164.81); // Mi3
+    const o = c.createOscillator(), o2 = c.createOscillator(), f = c.createBiquadFilter(), g = c.createGain(), g2 = c.createGain();
+    o.type = 'sawtooth'; o2.type = 'square'; o.frequency.value = f0; o2.frequency.value = f0 * 2.003; g2.gain.value = 0.35;
+    if (accent) { o.frequency.setValueAtTime(f0 * 1.025, t); o.frequency.exponentialRampToValueAtTime(f0, t + 0.03); }
+    f.type = 'lowpass'; f.frequency.setValueAtTime(5200, t); f.frequency.exponentialRampToValueAtTime(1300, t + Math.min(0.22, dur)); f.Q.value = 3.2;
+    const pk = 0.17 * v; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(pk, t + 0.004); g.gain.exponentialRampToValueAtTime(pk * 0.35, t + Math.min(0.12, dur));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.06);
     o.connect(f); o2.connect(g2).connect(f); f.connect(g); g.connect(this.bus); g.connect(this.verb);
-    o.start(t); o2.start(t); o.stop(t + dur + 0.06); o2.stop(t + dur + 0.06);
+    this.noiseHit(t, 0.008, 5000, 0.08 * v, 'highpass'); // tezene tıkırtısı
+    o.start(t); o2.start(t); o.stop(t + dur + 0.08); o2.stop(t + dur + 0.08);
   }
-  slide(t) { // kayan düdük (komik giriş)
-    const c = this.ctx, o = c.createOscillator(), g = c.createGain();
-    o.type = 'sine'; o.frequency.setValueAtTime(700, t); o.frequency.exponentialRampToValueAtTime(1800, t + 0.22);
-    this.env(g, t, 0.02, 0.06, 0.25); o.connect(g).connect(this.bus); o.start(t); o.stop(t + 0.3);
-  }
-  // oyun bitti: aşağı inen "vah vah" trombon
+  // oyun bitti: aşağı inen "vah vah" (wah'lı org)
   sad() {
     if (!this.out || !this.on || this.mute) return;
     const c = this.ctx, t = c.currentTime + 0.25;
@@ -2184,7 +2200,7 @@ class Player {
     this.fastFall = false; this.slideQueued = false; this.jumpBuffer = 0;
     this.landPulse = 0; this.roll = 0; this.yaw = 0; this.pitch = 0; this.sqY = 1;
     this.dead = false; this.deadT = 0;
-    this.flying = false; this.flyBoost = false; this.jumpMul = 1; this.invulnT = 0; this.wingOpen = 0;
+    this.flying = false; this.flyBoost = false; this.jumpMul = 1; this.invulnT = 0; this.wingOpen = 0; this.rampY = 0;
     this.tilt.rotation.set(0, 0, 0); this.root.position.set(this.x, 0, 0); this.model.visible = true;
   }
   get targetX() { return MODE.rider ? this.x + (this.vx || 0) * 0.12 : CONFIG.lanes[this.lane]; }
@@ -2247,7 +2263,14 @@ class Player {
         else if (this.jumpBuffer > 0) { this.jumpBuffer = 0; this.jump(); }
       }
     }
+    else this.y = this.rampY || 0; // 🛹 rampanın üstündeyken yüzeyi izle
     if (this.sliding && (this.slideT -= dt) <= 0) this.endSlide();
+  }
+  launch(mul) { // 🛹 rampadan fırla
+    if (this.flying) return;
+    if (this.sliding) this.endSlide();
+    this.vy = CONFIG.jump.velocity * mul; this.grounded = false; this.fastFall = false; this.rampY = 0;
+    this.bus.emit('jump');
   }
   die() { this.dead = true; this.deadT = 0; this.vy = 6; this.grounded = false; this.sliding = false; this.flying = false; this.wings.visible = false; this.aura.visible = false; }
   revive() { this.dead = false; this.deadT = 0; this.y = 0; this.vy = 0; this.grounded = true; this.tilt.rotation.set(0, 0, 0); this.invulnT = 3; }
@@ -2264,7 +2287,7 @@ class Player {
     const dx = MODE.rider ? (this.vx || 0) * 0.16 : this.targetX - this.x;
     this.roll = damp(this.roll, clamp(-dx * 0.22, -0.35, 0.35), 12, dt);
     this.yaw = damp(this.yaw, clamp(-dx * 0.16, -0.3, 0.3), 12, dt);
-    this.pitch = damp(this.pitch, this.flying ? -0.12 : this.grounded ? (this.sliding ? -0.06 : 0) : clamp(this.vy * 0.03, -0.3, 0.28), 10, dt);
+    this.pitch = damp(this.pitch, this.flying ? -0.12 : this.grounded ? (this.rampY > 0.03 ? 0.26 : this.sliding ? -0.06 : 0) : clamp(this.vy * 0.03, -0.3, 0.28), 10, dt);
     this.tilt.rotation.set(this.pitch, this.yaw, this.roll);
     this.landPulse = damp(this.landPulse, 0, 9, dt);
     this.sqY = damp(this.sqY, (this.sliding ? 0.5 : 1) - this.landPulse, 18, dt);
@@ -3457,7 +3480,7 @@ class Track {
     this.pools = new Map(); this.obstacles = []; this.crumbs = []; this.crumbPools = {}; this.crumbKind = 'kirinti';
     this.pickups = []; this.puPool = {}; this.untilPU = rand(160, 260); this.skyUntil = 0; this.skyLane = 1; this.skyCount = 0;
     this.dodged = 0; this.allowPU = true;
-    this.gases = []; this.foods = []; this.pads = []; this.untilPad = 80; this.suspend = 0; this.untilFood = rand(90, 160);
+    this.gases = []; this.foods = []; this.pads = []; this.ramps = []; this.untilRamp = rand(90, 140); this.untilPad = 80; this.suspend = 0; this.untilFood = rand(90, 160);
     this.box = new THREE.Box3(); this.biome = BIOMES[0];
   }
   makePickup(kind) { // parlak para gibi dönen disk + emoji
@@ -3554,9 +3577,9 @@ class Track {
     if (!Track.blobMat) { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 4, 32, 32, 32); g.addColorStop(0, 'rgba(0,0,0,0.55)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); Track.blobMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 }); Track.blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2); }
     const m = new THREE.Mesh(Track.blobGeo, Track.blobMat); const s = obj.scale.x || 1; m.scale.set(w / s, 1, d / s); m.position.y = 0.025; m.renderOrder = 1; obj.add(m); obj.userData.blob = m;
   }
-  spawnBlockCar(lane, z, runTime = 0) { // şeritli mod: aracın etrafından dolaş (üstünden atlanmaz)
+  spawnBlockCar(lane, z, runTime = 0, short = false) { // şeritli mod: aracın etrafından dolaş (üstünden atlanmaz)
     this.carPools ||= {};
-    const types = [['sedan', 3], ['sahin', 3], ['taksi', 3], ['hatch', 2], ['dolmus', 2], ['pickup', 2], ['murat', 2], ['polis', 1], ['kamyon', 1], ['itfaiye', 1], ['otobus', 1]];
+    const types = short ? [['sedan', 3], ['sahin', 3], ['taksi', 3], ['hatch', 2], ['murat', 2], ['polis', 1]] : [['sedan', 3], ['sahin', 3], ['taksi', 3], ['hatch', 2], ['dolmus', 2], ['pickup', 2], ['murat', 2], ['polis', 1], ['kamyon', 1], ['itfaiye', 1], ['otobus', 1]];
     let r = Math.random() * types.reduce((a, t) => a + t[1], 0), type = 'sedan';
     for (const [k, w] of types) { if ((r -= w) <= 0) { type = k; break; } }
     const V = VEHICLES[type], pool = (this.carPools[type] ||= []);
@@ -3606,6 +3629,7 @@ class Track {
     for (const g of this.gases) this.group.remove(g.obj); this.gases.length = 0;
     for (const f of this.foods) this.group.remove(f.obj); this.foods.length = 0;
     for (const p of this.pads) { this.group.remove(p.obj); this.padPool[p.kind].push(p.obj); } this.pads.length = 0; this.untilPad = rand(60, 110);
+    for (const r of this.ramps) { this.group.remove(r.obj); (this.rampPool ||= []).push(r.obj); } this.ramps.length = 0; this.untilRamp = rand(90, 140);
     this.dodged = 0; this.untilPU = rand(160, 260); this.suspend = 0; this.untilFood = rand(90, 160);
   }
   resetPools() { this.clear(); this.pools.clear(); this.crumbPools = {}; }
@@ -3654,6 +3678,10 @@ class Track {
       const lane = pick(free), kind = Math.random() < 0.6 ? 'boost' : 'slow';
       this.spawnPad(kind, lane, z + 3); free.splice(free.indexOf(lane), 1); this.untilPad = rand(70, 140);
     }
+    if (!MODE.rider && !b.water && free.length && this.untilRamp <= 0 && runTime > 6) { // 🛹 rampa: üstünden fırla, kırıntı yayını topla
+      const lane = pick(free); free.splice(free.indexOf(lane), 1); this.spawnRamp(lane, z + 4, Math.random() < 0.55);
+      this.untilRamp = rand(110, 190);
+    }
     const food = this.foodOverride || b.food;
     if (free.length && food && this.untilFood <= 0) { const lane = pick(free); this.spawnFood(food, lane, z + 2); free.splice(free.indexOf(lane), 1); this.untilFood = rand(120, 200); }
     if (free.length && this.allowPU && this.untilPU <= 0 && runTime > 4) { // güçlendirici
@@ -3676,6 +3704,59 @@ class Track {
     obj.position.set(CONFIG.lanes[lane] + rand(-0.5, 0.5), 0, z);
     const hw = Math.min((bd.max.x - bd.min.x) / 2, 0.85), hd = Math.max((bd.max.z - bd.min.z) / 2, 0.3);
     this.obstacles.push({ obj, key, role: 'block', lane, hw, hd, y0: 0, y1: 4, hit: false });
+  }
+  rampTex() { // 🛹 rampa üstü: koyu asfalt, sarı şerit okları, kenarda kırmızı-beyaz
+    if (this._rampTex) return this._rampTex;
+    const c = document.createElement('canvas'); c.width = 128; c.height = 256; const g = c.getContext('2d');
+    g.fillStyle = '#3b3f47'; g.fillRect(0, 0, 128, 256);
+    for (let i = 0; i < 900; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.06})`; g.fillRect(Math.random() * 128, Math.random() * 256, 2, 2); }
+    for (let y = 0; y < 256; y += 32) for (const x of [0, 114]) { g.fillStyle = '#e63946'; g.fillRect(x, y, 14, 16); g.fillStyle = '#f4f4f0'; g.fillRect(x, y + 16, 14, 16); }
+    g.strokeStyle = '#ffc914'; g.lineWidth = 17; g.lineJoin = 'miter'; g.lineCap = 'butt';
+    for (let i = 0; i < 3; i++) { const y = 44 + i * 74; g.beginPath(); g.moveTo(30, y + 34); g.lineTo(64, y); g.lineTo(98, y + 34); g.stroke(); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    return (this._rampTex = t);
+  }
+  makeRamp() { // kama: alçak ucu +z (oyuncuya dönük), yüksek ucu -z
+    const W = RAMP.W, L = RAMP.L, H = RAMP.H, g = new THREE.Group();
+    const top = new THREE.BufferGeometry();
+    top.setAttribute('position', new THREE.Float32BufferAttribute([-W / 2, 0, L / 2, W / 2, 0, L / 2, W / 2, H, -L / 2, -W / 2, H, -L / 2], 3));
+    top.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2)); top.setIndex([0, 1, 2, 0, 2, 3]); top.computeVertexNormals();
+    g.add(new THREE.Mesh(top, new THREE.MeshStandardMaterial({ map: this.rampTex(), roughness: 0.85 })));
+    const side = new THREE.BufferGeometry(), sx = W / 2;
+    side.setAttribute('position', new THREE.Float32BufferAttribute([-sx, 0, L / 2, -sx, 0, -L / 2, -sx, H, -L / 2, sx, 0, L / 2, sx, H, -L / 2, sx, 0, -L / 2, -sx, 0, -L / 2, sx, 0, -L / 2, sx, H, -L / 2, -sx, 0, -L / 2, sx, H, -L / 2, -sx, H, -L / 2], 3));
+    side.computeVertexNormals();
+    g.add(new THREE.Mesh(side, new THREE.MeshStandardMaterial({ color: 0xd62828, roughness: 0.7, side: THREE.DoubleSide })));
+    for (const x of [-sx - 0.05, sx + 0.05]) { // yandaki korkuluk: kırmızı-beyaz boğumlu
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, Math.hypot(L, H)), new THREE.MeshStandardMaterial({ color: 0xf4f4f0, roughness: 0.6 }));
+      rail.position.set(x, H / 2 + 0.06, 0); rail.rotation.x = Math.atan2(H, L); g.add(rail);
+    }
+    g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    return g;
+  }
+  spawnRamp(lane, z, withCar) {
+    const obj = (this.rampPool ||= []).pop() || this.makeRamp();
+    obj.position.set(CONFIG.lanes[lane], 0, z); obj.visible = true; this.group.add(obj);
+    this.ramps.push({ obj, lane, on: false, done: false });
+    // havadaki kırıntı yayı (fırlama yörüngesi)
+    const sp = Math.max(12, this.lastSpeed || 14), vy = CONFIG.jump.velocity * RAMP.boost, gr = CONFIG.jump.gravity * 0.92, topZ = z - RAMP.L / 2;
+    for (let i = 1; i <= 8; i++) {
+      const tt = i * 0.12, y = RAMP.H + vy * tt - gr * tt * tt / 2 + 0.4; if (y < 0.6) break;
+      const c = this.obtainCrumb(); c.position.set(CONFIG.lanes[lane], y, topZ - sp * tt); this.crumbs.push({ obj: c, lane, phase: i * 0.5, baseY: y });
+    }
+    if (withCar) { // rampanın ötesinde park etmiş araç: üstünden uç!
+      const n = this.obstacles.length; this.spawnBlockCar(lane, topZ - sp * 0.38, 0, true);
+      const o = this.obstacles[n]; if (o) { o.y1 = 2.0; o.rampCar = true; }
+    }
+    this.extraGap = 8; // iniş alanı boş kalsın
+  }
+  rampAt(player) { // oyuncunun altındaki rampa: yükseklik ya da tepeden çıkış anı
+    for (const r of this.ramps) {
+      if (Math.abs(r.obj.position.x - player.x) > 0.95) continue;
+      const zc = r.obj.position.z, L = RAMP.L;
+      if (zc + L / 2 >= 0 && zc - L / 2 <= 0) return { r, h: RAMP.H * (zc + L / 2) / L };
+      if (r.on && !r.done && zc - L / 2 > 0) return { r, top: true };
+    }
+    return null;
   }
   padTex(kind) { // ileri akan ok desenli parlak şerit
     this.padTexs ||= {};
@@ -3709,7 +3790,8 @@ class Track {
   }
   update(dt, speed, runTime, t, flying = false) {
     const d = speed * dt, nearZ = CONFIG.world.nearZ;
-    this.untilPad -= d;
+    this.untilPad -= d; this.untilRamp -= d; this.lastSpeed = speed;
+    for (let i = this.ramps.length - 1; i >= 0; i--) { const r = this.ramps[i]; r.obj.position.z += d; if (r.obj.position.z > nearZ + 4) { this.group.remove(r.obj); (this.rampPool ||= []).push(r.obj); this.ramps.splice(i, 1); } }
     if (this.padTexs) for (const k in this.padTexs) this.padTexs[k].offset.y += dt * (k === 'boost' ? -1.6 : 0.8);
     for (let i = this.pads.length - 1; i >= 0; i--) { const p = this.pads[i]; p.obj.position.z += d; if (p.obj.position.z > nearZ + 4) { this.group.remove(p.obj); this.padPool[p.kind].push(p.obj); this.pads.splice(i, 1); } }
     this.untilPU -= d; this.untilFood -= d; if (this.suspend > 0) this.suspend -= dt;
@@ -3732,7 +3814,8 @@ class Track {
       }
       if (!o.passed && o.obj.position.z > 1.4) { o.passed = true; if (!o.hit) { this.dodged++; this.onPass?.(o); } }
       if (o.v) o.obj.position.z -= o.v * dt; // 🚕 trafik: aynı yöne giden araçlar (sen sollarsın)
-      o.obj.visible = o.obj.position.z - (o.key === '__car' ? o.hd - 1 : 0) < 1.9; if (o.shadow) o.shadow.visible = o.obj.visible; // geçtikten sonra kameranın önünü kapatmasın
+      { const thr = Math.abs(o.obj.position.x - (this.camX || 0)) > 1.3 ? 4.6 : 1.9; // yan şeritteki engel kameraya gelene dek görünür kalsın (aniden kaybolmasın)
+        o.obj.visible = o.obj.position.z - (o.key === '__car' ? o.hd - 1 : 0) < thr; if (o.shadow) o.shadow.visible = o.obj.visible; } // geçtikten sonra kameranın önünü kapatmasın
       if (o.key === 'salatalik') { // 🥒 kendisi de sana doğru yuvarlanır
         if (o.obj.position.z < -6) o.obj.position.z += 5 * dt;
         (o.roll ||= o.obj.getObjectByName('roll'))?.rotateX((d + 5 * dt) / 0.42);
@@ -3756,7 +3839,7 @@ class Track {
     this.untilNext -= d;
     if (this.untilNext <= 0) {
       this.spawnRow(CONFIG.track.spawnZ - this.untilNext, runTime);
-      this.untilNext = this.gap(speed, runTime);
+      this.untilNext = this.gap(speed, runTime) + (this.extraGap || 0); this.extraGap = 0;
     }
   }
   collide(player, d) { // d: bu karede kat edilen yol (tünelleme önleme)
@@ -4301,7 +4384,7 @@ class Game {
     this.applyProvince(this.newTour(), true);
     this.onResize(); this.rig.snap(this.player);
     this.wireEvents();
-    if (DEBUG) { this.scene.add(new THREE.Box3Helper(this.player.collider, 0x00ff66)); window.game = this; window.THREE = THREE; window.makeVehicle = makeVehicle; this.__provs = PROVINCES; this.__regions = REGIONS; }
+    if (DEBUG) { this.scene.add(new THREE.Box3Helper(this.player.collider, 0x00ff66)); window.game = this; window.THREE = THREE; window.makeVehicle = makeVehicle; window.__Music = Music; this.__provs = PROVINCES; this.__regions = REGIONS; }
     if (LINEUP) await this.lineup();
     this.renderer.compile(this.scene, this.camera);
     this.toMenu(true); this.state = 'splash';
@@ -4609,7 +4692,7 @@ class Game {
     if (D >= ev.nextRaid) { if (b.home && !b.water) { ev.nextRaid = D + rand(750, 1150); this.raidAlarm(); return; } ev.nextRaid = D + 150; }
     if (D >= ev.nextBoss) { if (!b.water && !b.bonus) { ev.nextBoss = D + 1000; this.terlikBoss(); return; } ev.nextBoss = D + 150; }
     if (D >= ev.nextTambur && ['tuvalet', 'lavabo', 'salon'].includes(b.id)) { ev.nextTambur = D + rand(1200, 1700); this.track.spawnSpecial('tambur', 1, -85); }
-    if (b.city && !ev.passat && this.biomeDist > 110 && D >= ev.nextPassat) { ev.nextPassat = D + rand(650, 900); this.startPassat(); }
+    // 🚗 haraç kesen Passat kaldırıldı (oyuncu geri bildirimi)
   }
   /* 🚗🔊 MODİFİYELİ PASSAT: önünü keser, frene basar; çarparsan kırıntıdan haraç keser */
   startPassat() {
@@ -4876,7 +4959,7 @@ class Game {
         if (this.headstart > 0 && (this.headstart -= d) <= 0) { this.headstart = 0; this.pu.wings.t = Math.min(this.pu.wings.t, 1.2); }
         this.world.update(dt, this.speed);
         this.track.allowPU = !this.headstart;
-        this.track.update(dt, this.speed, this.runTime, this.time, this.player.flying);
+        this.track.camX = this.camera.position.x; this.track.update(dt, this.speed, this.runTime, this.time, this.player.flying);
         this.updatePU(dt);
         this.updateEvents(dt); this.updatePassat(dt);
         if (this.pu.magnet?.t > 0) this.track.attract(dt, this.player);
@@ -4884,6 +4967,10 @@ class Game {
         this.scene.fog.far = damp(this.scene.fog.far, radarOn ? this.fogFar * 1.5 : this.fogFar, 3, dt);
         const safe = this.player.flying || this.player.invulnT > 0 || this.ev.tamburT > 0;
         { const pad = this.track.padHit(this.player); if (pad) this.hitPad(pad); }
+        { const P = this.player, R = !P.flying && P.grounded ? this.track.rampAt(P) : null; // 🛹 rampa
+          if (R?.top) { R.r.done = true; P.launch(RAMP.boost); this.sfx.play('ramp'); haptic(25); this.rig.shake(0.12, 0.2); this.missions?.report?.('ramp', 1); }
+          else if (R) { R.r.on = true; P.rampY = R.h; }
+          else P.rampY = 0; }
         if (!safe && this.track.gasHit(this.player)) { this.gasCough(); if (this.state !== 'playing') break; }
         const hit = safe ? null : this.track.collide(this.player, d);
         if (hit) {
