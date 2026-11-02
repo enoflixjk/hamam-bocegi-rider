@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Makara Run</string>
+    <string name="title_activity_main">Makara Run: Türkiye</string>
+    <string name="package_name">com.makararun.turkiye</string>
+    <string name="custom_url_scheme">com.makararun.turkiye</string>
+</resources>
