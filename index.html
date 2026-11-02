@@ -50,6 +50,7 @@
   .icon-btn .gi { width: 62%; height: 62%; }
   .mtop { left: 12px; right: 70px; justify-content: flex-start; }
   .mtop .grow { flex: 1; }
+  #screen-over .row .small { white-space: nowrap; }
   .rbtn { width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center; padding: 0; -webkit-text-stroke: 0; }
   .logo-wrap.sm .logo { transform: rotate(-4deg) scale(.86); transform-origin: 50% 0; }
   #screen-menu { justify-content: flex-start; padding-top: calc(var(--safe-top) + 64px); }
@@ -556,6 +557,7 @@
 <div id="screen-menu" class="overlay hidden">
   <div class="topbar mtop">
     <button class="b3 blue rbtn" id="btnSettings" aria-label="Ayarlar"><svg class="gi" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 2.8h3.4l.5 2.4 1.7.9 2.2-1.1 2.4 2.4-1.1 2.2.9 1.7 2.4.5v3.4l-2.4.5-.9 1.7 1.1 2.2-2.4 2.4-2.2-1.1-1.7.9-.5 2.4h-3.4l-.5-2.4-1.7-.9-2.2 1.1-2.4-2.4 1.1-2.2-.9-1.7-2.4-.5v-3.4l2.4-.5.9-1.7-1.1-2.2 2.4-2.4 2.2 1.1 1.7-.9z" fill="#fff" stroke="#1b1840" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/><circle cx="12" cy="12" r="3.2" fill="#7fc8f0" stroke="#1b1840" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/></svg></button>
+    <button class="b3 blue rbtn hidden" id="btnGC" aria-label="Game Center sıralama ve başarımlar"><svg class="gi" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.2h10v4.6a5 5 0 0 1-10 0z" fill="#ffc914" stroke="#1b1840" stroke-width="2.4" stroke-linejoin="round"/><path d="M7 6H3.8a3.4 3.4 0 0 0 3.6 4.4M17 6h3.2a3.4 3.4 0 0 1-3.6 4.4" fill="none" stroke="#1b1840" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 13.8v3.4M8 20.2h8l-.8-3H8.8z" fill="#fff" stroke="#1b1840" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/></svg></button>
     <div class="grow"></div>
     <div class="pill" title="Skor çarpanı"><div class="coin x">⭐</div><span id="tagMult">x1</span></div>
     <div class="pill"><div class="coin">🍞</div><span id="tagBank">0</span></div>
@@ -619,6 +621,7 @@
   <div class="row">
     <button class="b3 pink small" id="btnOverShop">🛒 Mağaza</button>
     <button class="b3 blue small" id="btnOverMenu">Ana menü</button>
+    <button class="b3 green small hidden" id="btnOverGC">🏆 Sıralama</button>
   </div>
   <span id="overBank" style="display:none"></span>
 </div>
@@ -1065,10 +1068,11 @@ class Save {
     this.owned = Object.assign({}, d.owned);                 // gerçek parayla alınan tek seferlik paketler
     this.free = Object.assign({ day: '', n: 0 }, d.free);   // günlük bedava ekmek (reklam) sayacı
     this.runs = d.runs ?? 0;
+    this.stats = Object.assign({ crumbs: 0, ramps: 0, maxIl: 1 }, d.stats); // 🏆 Game Center başarımları için toplam sayaçlar
     this.isNew = !d.t;
   }
   write() {
-    storage.set('hbr_save', { t: Date.now(), bank: this.bank, best: this.best, bestScore: this.bestScore, upgrades: this.upgrades, perks: this.perks, items: this.items, selected: this.selected, mission: this.mission, mult: this.mult, owned: this.owned, free: this.free, runs: this.runs, skins: this.skins, skin: this.skin });
+    storage.set('hbr_save', { t: Date.now(), bank: this.bank, best: this.best, bestScore: this.bestScore, upgrades: this.upgrades, perks: this.perks, items: this.items, selected: this.selected, mission: this.mission, mult: this.mult, owned: this.owned, free: this.free, runs: this.runs, skins: this.skins, skin: this.skin, stats: this.stats });
   }
   puDuration(k) { return PU_BASE + this.upgrades[k] * PU_STEP; }
 }
@@ -1150,6 +1154,60 @@ const PACKS = {
   baslangic:    { type: 'nonconsumable', icon: 'starter', emoji: '🎁', name: 'Başlangıç Paketi', desc: '2.500 🍞 + 3 İkinci Şans + 3 Uçarak Başla + 3 Skor Takviyesi (tek sefer)', crumbs: 2500, items: { revive: 3, headstart: 3, booster: 3 }, demo: '₺59,99', best: 'FIRSAT' },
   reklamsiz:    { type: 'nonconsumable', icon: 'noads',   emoji: '🚫', name: 'Reklamsız',        desc: 'Ara reklamlar tamamen kalkar. Ödüllü reklamlar isteğe bağlı kalır.', noAds: true, demo: '₺99,99' },
 };
+
+/* ---------- 🏆 Game Center (yalnızca iOS) ----------
+   Yerel eklenti: ios/App/App/AppDelegate.swift → GameCenterPlugin (jsName 'GameCenter').
+   Kimlikler App Store Connect > Game Center'daki liderlik tablosu / başarım kimlikleriyle birebir aynı olmalı. */
+const GC_BOARDS = { score: 'makararun.skor', dist: 'makararun.mesafe' };
+const GC_ACH = [ // p: ilerleme yüzdesi (0-100)
+  { id: 'makararun.ilk_kosu',     p: (s) => s.runs >= 1 ? 100 : 0 },
+  { id: 'makararun.mesafe_1000',  p: (s) => s.best / 1000 * 100 },
+  { id: 'makararun.mesafe_5000',  p: (s) => s.best / 5000 * 100 },
+  { id: 'makararun.il_5',         p: (s) => (s.stats.maxIl - 1) / 4 * 100 },
+  { id: 'makararun.il_10',        p: (s) => (s.stats.maxIl - 1) / 9 * 100 },
+  { id: 'makararun.skor_100bin',  p: (s) => s.bestScore / 100000 * 100 },
+  { id: 'makararun.carpan_10',    p: (s) => (s.mult - 1) / 9 * 100 },
+  { id: 'makararun.kirinti_10bin',p: (s) => s.stats.crumbs / 10000 * 100 },
+  { id: 'makararun.rampa_25',     p: (s) => s.stats.ramps / 25 * 100 },
+  { id: 'makararun.gelistir_max', p: (s) => Math.max(...Object.values(s.upgrades), ...Object.values(s.perks)) / PU_MAX_LVL * 100 },
+  { id: 'makararun.hamam_ailesi', p: (s) => Object.keys(SKINS).filter((k) => s.skins[k]).length / Object.keys(SKINS).length * 100 },
+];
+class GameCenter {
+  constructor(game) {
+    this.game = game; this.authed = false; this.sent = {};
+    this.plugin = NATIVE && PLATFORM === 'ios' ? (CAP?.Plugins?.GameCenter || CAP?.registerPlugin?.('GameCenter')) : null;
+  }
+  get available() { return !!this.plugin; }
+  async login() {
+    const P = this.plugin; if (!P || this._busy) return this.authed; this._busy = true;
+    try { const r = await P.authenticate(); this.authed = !!r?.authenticated; } catch { this.authed = false; }
+    if (!this._listen) { this._listen = true; try { P.addListener('authChanged', (d) => { const was = this.authed; this.authed = !!d?.authenticated; if (this.authed && !was) this.sync(); }); } catch {} }
+    this._busy = false;
+    if (this.authed) this.sync();
+    return this.authed;
+  }
+  sync() { const s = this.game.save; this.submit(s.bestScore, s.best); this.check(); }
+  submit(score, dist) {
+    const P = this.plugin; if (!P || !this.authed) return;
+    if (score >= 1) P.submitScore({ leaderboardId: GC_BOARDS.score, score: Math.floor(score) }).catch(() => {});
+    if (dist >= 1) P.submitScore({ leaderboardId: GC_BOARDS.dist, score: Math.floor(dist) }).catch(() => {});
+  }
+  check() { // ilerleme arttıysa bildir (tamamlananı Game Center kendisi afişle kutlar)
+    const P = this.plugin; if (!P || !this.authed) return;
+    const s = this.game.save, items = [];
+    for (const a of GC_ACH) {
+      let v = 0; try { v = Math.floor(Math.max(0, Math.min(100, a.p(s) || 0))); } catch {}
+      if (v > (this.sent[a.id] || 0)) { this.sent[a.id] = v; items.push({ id: a.id, percent: v }); }
+    }
+    if (items.length) P.reportAchievements({ items }).catch(() => {});
+  }
+  async show(state = 'dashboard') {
+    const P = this.plugin; if (!P) return;
+    if (!this.authed) await this.login();
+    if (!this.authed) { this.game.ui.toast('🏆 Game Center için iPhone Ayarlar › Game Center\'dan giriş yap'); return; }
+    try { await P.show({ state }); } catch {}
+  }
+}
 
 /* Gömülü ikonlar (Gemini ile üretildi) → yoksa emoji */
 const ICONS = { ...(window.HBR_ICONS || {}), ...(window.HBR_SPRITES || {}) }; // ikonlar + şehir/deniz sprite'ları (Gemini)
@@ -4377,7 +4435,7 @@ class Game {
     this.time = 0; this.speed = 0; this.distance = 0; this.runTime = 0; this.resumeT = 0; this.crumbs = 0; this.score = 0;
     this.save = new Save();
     this.missions = new Missions(this.save, (m, setDone, reward) => this.onMission(m, setDone, reward));
-    this.ads = new Ads(this); this.store = new Store(this);
+    this.ads = new Ads(this); this.store = new Store(this); this.gc = new GameCenter(this);
     this.pu = {}; this.boost = 0; this.headstart = 0; this.revivesUsed = 0; this.lastStumbleAt = 0; this.biomesPassed = 0; this.missionTick = 0;
     this.lastBumpToast = -10; this.slowT = 0; this.turboT = 0; this.deathT = 0;
     this.resetEvents();
@@ -4622,6 +4680,10 @@ class Game {
     ui.el.btnMenu.addEventListener('click', () => this.toMenu());
     ui.el.btnRetry.addEventListener('click', () => this.leaveOver(() => { this.toMenu(true); this.start(); }));
     ui.el.btnOverMenu.addEventListener('click', () => this.leaveOver(() => this.toMenu()));
+    { const g1 = document.getElementById('btnGC'), g2 = document.getElementById('btnOverGC'); // 🏆 Game Center (iOS)
+      if (this.gc.available) { g1.classList.remove('hidden'); g2.classList.remove('hidden'); }
+      g1.addEventListener('click', () => { this.sfx.unlock(); this.sfx.play('lane'); this.gc.show('dashboard'); });
+      g2.addEventListener('click', () => { this.sfx.play('lane'); this.gc.show('leaderboards'); }); }
     ui.el.btnOverShop.addEventListener('click', () => this.leaveOver(() => { this.toMenu(true); this.openShop(); }));
     ui.el.btnShop.addEventListener('click', () => this.openShop());
     document.querySelectorAll('#dock .dt').forEach((b) => b.addEventListener('click', () => { sfx.unlock(); sfx.play('lane'); haptic(8); this.goTab(b.dataset.tab); }));
@@ -4690,7 +4752,7 @@ class Game {
     if (type === 'pack') { this.sfx.unlock(); return this.store.buy(k); }
     if (type === 'skin') {
       if (!sv.skins[k]) { if (sv.bank < SKINS[k].cost) return; sv.bank -= SKINS[k].cost; sv.skins[k] = true; this.ui.toast(`${SKINS[k].icon} ${SKINS[k].name} senin!`); }
-      sv.skin = k; this.applySkin(k); sv.write(); this.sfx.unlock(); this.sfx.play('buy'); haptic(15); this.renderShop(); return;
+      sv.skin = k; this.applySkin(k); sv.write(); this.gc.check(); this.sfx.unlock(); this.sfx.play('buy'); haptic(15); this.renderShop(); return;
     }
     if (type === 'free') {
       if (this.ads.freeLeft() <= 0) return;
@@ -4701,7 +4763,7 @@ class Game {
     if (cost == null || sv.bank < cost) return;
     sv.bank -= cost;
     if (type === 'upg') sv.upgrades[k]++; else if (type === 'perk') sv.perks[k]++; else sv.items[k]++;
-    sv.write(); this.sfx.unlock(); this.sfx.play('buy'); haptic(15);
+    sv.write(); this.gc.check(); this.sfx.unlock(); this.sfx.play('buy'); haptic(15);
     this.renderShop();
   }
   toggleStartItem(k) {
@@ -4710,7 +4772,7 @@ class Game {
     this.ui.renderStartItems(this.save, (x) => this.toggleStartItem(x));
   }
   onMission(m, setDone, reward) {
-    if (setDone) { this.ui.banner(`x${this.save.mult} ÇARPAN!`); this.ui.toast(`🎉 Görevler tamam! +🍞${reward}`); this.sfx.play('biome'); }
+    if (setDone) { this.gc.check(); this.ui.banner(`x${this.save.mult} ÇARPAN!`); this.ui.toast(`🎉 Görevler tamam! +🍞${reward}`); this.sfx.play('biome'); }
     else { this.ui.toast(`✅ Görev tamam: ${m.t.text(m.target)}`); this.sfx.play('buy'); }
     this.save.write();
   }
@@ -4719,7 +4781,8 @@ class Game {
   /* ---- açılış / reklam kancaları ---- */
   leaveSplash() {
     if (this.state !== 'splash') return;
-    this.sfx.unlock(); this.voice.preloadAll(); this.ads.init();
+    this.sfx.unlock(); this.voice.preloadAll();
+    this.ads.init().catch(() => {}).finally(() => this.gc.login()); // önce takip izni + reklam, sonra Game Center girişi
     this.ui.leaveSplash(); this.toMenu();
   }
   onAdOpen() { this._adPrev = this.music.mode; this.music.set('off'); this.voice.stop(); this.sfx.duck(true); }
@@ -4992,10 +5055,12 @@ class Game {
   finishRun() {
     const sv = this.save;
     sv.bank += this.crumbs; sv.runs++;
+    sv.stats.crumbs += this.crumbs; sv.stats.maxIl = Math.max(sv.stats.maxIl, this.tour?.visited || 1);
     const newBest = this.score > sv.bestScore;
     if (newBest) sv.bestScore = this.score;
     if (this.distance > sv.best) sv.best = this.distance;
     sv.write();
+    this.gc.submit(this.score, this.distance); this.gc.check();
     this.state = 'over';
     this.ui.showOver({ caught: this.caught, distance: this.distance, crumbs: this.crumbs, score: this.score, save: sv, missions: this.missions, newBest: newBest && this.score > 0, mult: this.multiplier, provinces: this.tour?.visited });
     this.ui.el.btnDouble.classList.toggle('hidden', this.crumbs <= 0 || this.doubled);
@@ -5070,7 +5135,7 @@ class Game {
         const safe = this.player.flying || this.player.invulnT > 0 || this.ev.tamburT > 0;
         { const pad = this.track.padHit(this.player); if (pad) this.hitPad(pad); }
         { const P = this.player, R = !P.flying && P.grounded ? this.track.rampAt(P) : null; // 🛹 rampa
-          if (R?.top) { R.r.done = true; P.launch(RAMP.boost); this.sfx.play('ramp'); haptic(25); this.rig.shake(0.12, 0.2); this.missions?.report?.('ramp', 1); }
+          if (R?.top) { R.r.done = true; P.launch(RAMP.boost); this.save.stats.ramps++; this.sfx.play('ramp'); haptic(25); this.rig.shake(0.12, 0.2); this.missions?.report?.('ramp', 1); }
           else if (R) { R.r.on = true; P.rampY = R.h; }
           else P.rampY = 0; }
         if (!safe && this.track.gasHit(this.player)) { this.gasCough(); if (this.state !== 'playing') break; }
