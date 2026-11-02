@@ -1,5 +1,10 @@
 apply plugin: 'com.android.application'
 
+// 🔑 İmza: android/keystore.properties varsa release imzalanır (anahtar repoda tutulmaz)
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) { keystorePropsFile.withInputStream { keystoreProps.load(it) } }
+
 android {
     namespace = "com.makararun.turkiye"
     compileSdk = rootProject.ext.compileSdkVersion
