@@ -1,0 +1,17 @@
+{
+	"appId": "com.makararun.turkiye",
+	"appName": "Makara Run: Türkiye",
+	"webDir": "www",
+	"ios": {
+		"contentInset": "never",
+		"backgroundColor": "#2a2268"
+	},
+	"plugins": {
+		"SplashScreen": {
+			"launchShowDuration": 800,
+			"backgroundColor": "#2a2268",
+			"showSpinner": false
+		},
+		"AdMob": {}
+	}
+}
