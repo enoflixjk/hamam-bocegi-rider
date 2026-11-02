@@ -1122,11 +1122,14 @@ const QUALITY = (() => {
   let gpu = ''; try { const gl = document.createElement('canvas').getContext('webgl'); const ext = gl && gl.getExtension('WEBGL_debug_renderer_info'); gpu = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : ''; gl?.getExtension('WEBGL_lose_context')?.loseContext(); } catch {}
   const mem = navigator.deviceMemory || 4, cores = navigator.hardwareConcurrency || 4;
   const weakGpu = /Mali-(T|G[1-6]\d\b|G7[0-2])|Adreno \(TM\) ([1-5]\d\d|6[0-1]\d)\b|PowerVR|Vivante|Imagination/i.test(gpu);
-  let tier = android ? (mem <= 4 || cores <= 4 || weakGpu ? 'low' : 'mid') : 'high';
+  const soft = /SwiftShader|Basic Render|llvmpipe|softpipe|Software/i.test(gpu); // GPU yok: yazılımla çizim (çok yavaş)
+  let tier = soft ? 'low' : android ? (mem <= 4 || cores <= 4 || weakGpu ? 'low' : 'mid') : 'high';
   const q = new URLSearchParams(location.search).get('gfx'); let saved = null; try { saved = localStorage.getItem('mr_gfx'); } catch {}
   if (['low', 'mid', 'high'].includes(q || saved)) tier = q || saved;
-  const T = { low: { pr: 1, aa: false, shadow: false, env: false, fog: [30, 105], cull: 108 }, mid: { pr: 1.5, aa: false, shadow: true, shadowSize: 512, env: true, fog: [35, 125], cull: 128 }, high: { pr: 2, aa: true, shadow: true, shadowSize: 1024, env: true, fog: [35, 135], cull: 140 } }[tier];
-  return { tier, gpu, android, ...T };
+  // mp: ekrana çizilen en fazla piksel (milyon) — doluluk (fill-rate) zayıf GPU'larda asıl darboğaz
+  const T = { low: { pr: 1, mp: 0.45, aa: false, shadow: false, env: false, lambert: true, fog: [30, 105], cull: 108 }, mid: { pr: 1.5, mp: 0.9, aa: false, shadow: false, env: true, fog: [35, 125], cull: 128 }, high: { pr: 2, mp: 1.8, aa: true, shadow: true, shadowSize: 1024, env: true, fog: [35, 135], cull: 140 } }[tier];
+  if (soft) T.mp = 0.3;
+  return { tier, gpu, android, soft, ...T };
 })();
 /* 🏍️ SÜRÜŞ MODU: 'rider' = Traffic Rider tarzı serbest direksiyon + sürücü gözü kamera, 'lane' = klasik 3 şerit (Subway) */
 const MODE = { rider: true };
@@ -4110,6 +4113,11 @@ class Game {
   }
   onResize() {
     const w = innerWidth, h = innerHeight;
+    // ⚡ piksel bütçesi: büyük ekranda (PC) çözünürlüğü otomatik düşür, telefon kadar piksel çiz
+    const cap = Math.sqrt(QUALITY.mp * 1e6 / Math.max(1, w * h));
+    this.maxPixelRatio = Math.max(0.35, Math.min(window.devicePixelRatio || 1, CONFIG.render.maxPixelRatio, QUALITY.pr, cap));
+    this.minPixelRatio = Math.max(0.3, this.maxPixelRatio * 0.55);
+    if (this.pixelRatio > this.maxPixelRatio || !this.pixelRatio) { this.pixelRatio = this.maxPixelRatio; this.renderer.setPixelRatio(this.pixelRatio); }
     this.renderer.setSize(w, h, false); this.camera.aspect = w / h;
     this.rig?.onResize(this.camera.aspect); this.camera.updateProjectionMatrix();
   }
@@ -4598,8 +4606,19 @@ class Game {
     }
     this.particles.update(dt, this.state === 'playing' ? this.speed : 0);
     this.updateBooms(dt, this.state === 'playing' ? this.speed : 0);
+    if ((this.lambertOn || QUALITY.lambert) && (this.lambertT = (this.lambertT || 0) + raw) > 0.5) { this.lambertT = 0; this.toLambert(); }
     this.renderer.render(this.scene, this.camera);
     if (this.state === 'playing') { this.ui.updateHud(this.distance, this.multiplier, this.crumbs, this.score); if (MODE.rider) this.ui.setSpeed(this.speed, this.distance); }
+  }
+  toLambert() { // ⚡ zayıf GPU: PBR (Standard) malzemeleri ucuz Lambert'e çevir — görüntü aynı renkler, piksel başına çok daha az iş
+    const C = (this.lambertCache ||= new Map());
+    const conv = (m) => {
+      if (!m || !m.isMeshStandardMaterial || m.transparent || m.userData.keep) return m; // saydam/animasyonlu malzemelere dokunma
+      let l = C.get(m);
+      if (!l) { l = new THREE.MeshLambertMaterial({ map: m.map, color: m.color, emissive: m.emissive, emissiveMap: m.emissiveMap, emissiveIntensity: m.emissiveIntensity, transparent: m.transparent, opacity: m.opacity, side: m.side, vertexColors: m.vertexColors, alphaTest: m.alphaTest, depthWrite: m.depthWrite, fog: m.fog, polygonOffset: m.polygonOffset, polygonOffsetFactor: m.polygonOffsetFactor }); l.name = m.name; l.color = m.color; l.emissive = m.emissive; C.set(m, l); } // renkler ortak: sonradan boyama da yansır
+      return l;
+    };
+    this.scene.traverse((o) => { if (o.isMesh && o.material) o.material = Array.isArray(o.material) ? o.material.map(conv) : conv(o.material); });
   }
   monitorPerf(raw) {
     if (raw <= 0 || raw > 0.25) return;
@@ -4610,14 +4629,15 @@ class Game {
     }
     if ((this.perfTimer += raw) < 2) return;
     this.perfTimer = 0;
-    if (this.fpsAvg < 34 && this.pixelRatio <= 1 && !this.renderer.shadowMap.enabled && this.world.cullZ > 85) { this.world.cullZ -= 12; this.fogFar = Math.max(80, this.fogFar - 12); return; } // son son çare: görüş mesafesi
-    if (this.fpsAvg < 40 && this.pixelRatio <= 1 && this.renderer.shadowMap.enabled) { // son çare: gölgeleri kapat
+    if (this.fpsAvg < 40 && this.renderer.shadowMap.enabled) { // önce gölgeleri kapat (en pahalı)
       this.renderer.shadowMap.enabled = false; this.sun.castShadow = false; this.shadow.visible = true;
       this.scene.traverse((o) => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => (m.needsUpdate = true)); });
       return;
     }
-    if (this.fpsAvg < 48 && this.pixelRatio > 1) { this.pixelRatio = Math.max(1, this.pixelRatio - 0.25); this.goodWindows = 0; this.renderer.setPixelRatio(this.pixelRatio); this.onResize(); }
-    else if (this.fpsAvg > 58 && this.pixelRatio < this.maxPixelRatio && ++this.goodWindows >= 3) { this.pixelRatio = Math.min(this.maxPixelRatio, this.pixelRatio + 0.25); this.goodWindows = 0; this.renderer.setPixelRatio(this.pixelRatio); this.onResize(); }
+    if (this.fpsAvg < 48 && this.pixelRatio > this.minPixelRatio + 0.01) { this.pixelRatio = Math.max(this.minPixelRatio, this.pixelRatio * 0.82); this.goodWindows = 0; this.renderer.setPixelRatio(this.pixelRatio); this.onResize(); return; }
+    if (this.fpsAvg < 34 && !this.lambertOn) { this.lambertOn = true; return; } // daha basit ışıklandırma
+    if (this.fpsAvg < 34 && this.world.cullZ > 85) { this.world.cullZ -= 12; this.fogFar = Math.max(80, this.fogFar - 12); return; } // son çare: görüş mesafesi
+    if (this.fpsAvg > 58 && this.pixelRatio < this.maxPixelRatio && ++this.goodWindows >= 3) { this.pixelRatio = Math.min(this.maxPixelRatio, this.pixelRatio * 1.12); this.goodWindows = 0; this.renderer.setPixelRatio(this.pixelRatio); this.onResize(); }
   }
 }
 
